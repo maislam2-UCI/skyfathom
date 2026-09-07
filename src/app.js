@@ -160,7 +160,7 @@ function loop() {
   const st = app.state;
   if (app.renderer.resize()) app.dirty = true;
   app.updateEphemeris();
-  if (performance.now() - lastHud > 250) { lastHud = performance.now(); app.mode?.hud?.(app); app.ui.updateCompass?.(); }
+  if (app._lastFrame && performance.now() - lastHud > 250) { lastHud = performance.now(); app.mode?.hud?.(app); app.ui.updateCompass?.(); }
   const live = st.time.live || app.modeName === "ar" || st.selection;
   if (!app.dirty && !live) return;
   if (!app.dirty && live && performance.now() - (app._lastFrame || 0) < (app.modeName === "ar" ? 0 : 1000)) return;
