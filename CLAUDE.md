@@ -26,21 +26,22 @@ Uses phone GPS, orientation sensors (IMU/compass) and rear camera.
 - **Privacy.** GPS and camera stay on-device. No analytics, no upload.
 
 ## 3. Architecture
-Static PWA, no build step: `src/` is served as-is (`npm run dev` → port 4321).
+Static PWA, no build step: `src/` is served as-is (`npm run dev` → http 4321, https 4322 with `npm run cert`).
 ```
 src/
-  index.html  app.js  sw.js  manifest.webmanifest  ui/app.css
-  engine/   state.js  transform.js (pure math)  ephemeris.js  catalog.js
-  sensors/  gps.js  imu.js  camera.js
-  modes/    planetarium.js  ar.js  planner.js  framing.js
-  weather.js
-tools/      serve.mjs (dev server)  build-catalog.mjs (catalog generator)
-data/catalogs/   generated JSON (see README there)
-tests/      node --test
-docs/       PLAN.md (feature matrix, phases, open questions)
+  index.html  app.js (wiring + render loop)  sw.js  manifest.webmanifest
+  engine/   state.js (observable state, presets, gear)  transform.js (pure math: sidereal time, alt/az, precession, Projector)
+            ephemeris.js (astronomy-engine wrapper)  catalog.js (typed arrays, precession, picking, search)
+            geomag.js + geomag-coeffs.js (WMM2025 declination)
+  render/   sky.js (Canvas 2D renderer: stars, lines, DSOs, bodies with Moon phase, Milky Way, grids, labels, picking)
+  sensors/  gps.js  imu.js (iOS compass + Android absolute orientation → look vector)  camera.js
+  modes/    planetarium.js  ar.js  planner.js  framing.js   (enter/exit/frame/hud contract)
+  ui/       panels.js (search, location, time, settings sheets + object card)  app.css
+  data/     generated catalogs (README lists sources + licenses)   vendor/ astronomy-engine (MIT)
+tools/      serve.mjs  build-catalog.mjs  make-icons.mjs  make-cert.mjs
+tests/      engine.test.js (node --test; accuracy checks against NOAA / known values)
 ```
-Rendering: Canvas 2D first (simplest, fast enough for ~10k stars); Three.js/WebGL
-only if a measured need appears.
+Rendering is Canvas 2D (fast enough for ~40k stars). Modes own their UI; `app` in app.js is the shared hub.
 
 ## 4. Standards
 ES modules, no framework, no TypeScript build step (JSDoc types). `engine/` is

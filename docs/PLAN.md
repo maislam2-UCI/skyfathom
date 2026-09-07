@@ -16,15 +16,20 @@
 | SkySafari | Telescope GoTo control (Bluetooth/WiFi) | Not in PWA | Capacitor phase, if ever |
 | all | Night-vision red mode, offline use, home-screen install | Yes | ui/, sw.js |
 
-## Phases
-0. **Scaffold** (this commit): structure, dev server, state, coordinate math + tests.
-1. **Planetarium**: catalogs built, Canvas renderer, GPS, drag/pinch, time scrub, search.
-2. **Ephemeris + Planner**: astronomy-engine vendored; Sun/Moon/planets on the map;
-   tonight panel (twilight, Moon, MW core window); exposure calculators.
-3. **AR mode**: camera background, IMU pointing, low-pass filter, tap-star calibration.
-4. **Framing**: gear profiles, FOV rectangle over DSO, altitude curve, NGC lazy shards.
-5. **Weather strip + offline**: Open-Meteo hourly cloud bars for tonight; service-worker cache.
-6. **Native wrap (optional)**: Capacitor → APK, better sensor fusion, Bluetooth.
+## Phases (status 2026-09-06)
+0. **Scaffold** — done.
+1. **Planetarium** — done: HYG/Stellarium/OpenNGC catalogs, Canvas renderer, GPS + presets (USA + Bangladesh), drag/pinch/tap, time travel, search.
+2. **Ephemeris + Planner** — done: astronomy-engine vendored; Sun/Moon/planets on the map; Tonight panel (twilight, Moon, MW core window, planets, best Messier); NPF/500/hyperfocal.
+3. **AR mode** — done in code: camera background, iOS/Android orientation adapters, WMM2025 declination, low-pass filter, tap-a-star alignment, camera-FOV calibration. **Needs on-phone verification over HTTPS** (cannot be exercised in a desktop browser).
+4. **Framing** — done: gear presets incl. iPhone 17 Pro Max lenses, FOV box, rotation, altitude chart, NGC/IC lazy search.
+5. **Weather + offline** — done: Open-Meteo strip + sky score; service worker precache (verified in real browsers only — the in-app preview blocks service workers).
+6. **Native wrap (optional)** — not started. Only needed for telescope control / app-store listing.
+
+## Known limits
+- Compass accuracy ≈ 2–5° after alignment; magnetometer noise near metal/magnets.
+- iPhone: motion permission must be granted from a tap on an HTTPS page; if denied once, re-enable in Settings → Safari → Motion & Orientation Access.
+- Seeing/transparency forecasts are not available from free sources (decision: free only).
+- Self-signed HTTPS on the LAN is for testing; a real host (GitHub Pages, Cloudflare Pages) gives a clean install on the phone.
 
 ## Catalogs
 Yale BSC (stars), IAU/Stellarium (constellation lines — confirm license), OpenNGC

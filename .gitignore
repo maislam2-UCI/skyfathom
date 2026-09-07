@@ -8,3 +8,6 @@ Thumbs.db
 !.env.example
 # large generated catalogs (regenerate with tools/build-catalog.mjs)
 data/raw/
+
+# local HTTPS dev certificate
+certs/

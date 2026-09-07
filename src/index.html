@@ -4,20 +4,54 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#05070f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NightSky">
+  <meta name="description" content="Night-sky map, AR star finder and astrophotography planner. Works offline, anywhere on Earth.">
   <title>NightSky</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
   <link rel="stylesheet" href="ui/app.css">
 </head>
 <body>
-  <canvas id="sky"></canvas>
   <video id="cam" autoplay muted playsinline hidden></video>
-  <nav id="modes">
-    <button data-mode="planetarium" class="active">Map</button>
-    <button data-mode="ar">AR</button>
-    <button data-mode="planner">Plan</button>
-    <button data-mode="framing">Frame</button>
-  </nav>
+  <canvas id="sky" aria-label="Sky map"></canvas>
+
+  <header id="topbar">
+    <button id="chip-loc" class="chip" title="Location">📍 <span>…</span></button>
+    <button id="chip-time" class="chip" title="Time">🕒 <span>…</span></button>
+    <span class="spacer"></span>
+    <button id="btn-search" class="icon" title="Search">🔍</button>
+    <button id="btn-settings" class="icon" title="Settings">⚙️</button>
+  </header>
+
   <div id="hud"></div>
+  <div id="ar-overlay" hidden>
+    <div class="card">
+      <h2>AR sky view</h2>
+      <p>Point the phone at the sky. Needs motion sensors and (optionally) the camera. Both stay on your device.</p>
+      <button id="ar-enable" class="primary">Enable sensors &amp; camera</button>
+      <button id="ar-nocam" class="ghost">Sensors only (no camera)</button>
+      <p id="ar-error" class="error" hidden></p>
+    </div>
+  </div>
+
+  <aside id="panel" hidden></aside>
+  <section id="info" hidden></section>
+  <section id="sheet" hidden><div class="sheet-inner"></div></section>
+  <div id="toast" hidden></div>
+  <div id="loading"><div class="spinner"></div><div id="loading-text">Loading star catalogs…</div></div>
+
+  <nav id="modes">
+    <button data-mode="planetarium" class="active">🗺️<span>Map</span></button>
+    <button data-mode="ar">📷<span>AR</span></button>
+    <button data-mode="planner">🌙<span>Tonight</span></button>
+    <button data-mode="framing">🔭<span>Frame</span></button>
+  </nav>
+
+  <script src="vendor/astronomy.browser.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

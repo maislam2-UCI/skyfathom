@@ -103,6 +103,22 @@ export class Catalog {
     return best;
   }
 
+  /** Nearest object to an of-date unit vector (from Projector.unproject) within radiusDeg. */
+  nearestVec(x, y, z, radiusDeg, { includeDso = true, faint = false } = {}) {
+    const cosR = Math.cos(radiusDeg * Math.PI / 180); let best = null;
+    const scan = (set, weight, magOf) => {
+      for (let i = 0; i < set.n; i++) {
+        const d = set.x[i] * x + set.y[i] * y + set.z[i] * z; if (d < cosR) continue;
+        const sep = Math.acos(Math.min(1, d)) * 180 / Math.PI, score = sep * weight + Math.max(0, magOf(i)) * 0.02 * radiusDeg;
+        if (!best || score < best.score) best = { kind: set.kind, set, index: i, sep, score };
+      }
+    };
+    scan(this.stars, 1, i => this.stars.mag[i]);
+    if (faint && this.faint) scan(this.faint, 1.2, i => this.faint.mag[i]);
+    if (includeDso) scan(this.dso, 0.9, i => this.dso.rows[i].mag ?? 10);
+    return best;
+  }
+
   /** Text search across bodies, constellations, stars and deep-sky objects. */
   search(query, limit = 14) {
     let q = query.trim().toLowerCase();
