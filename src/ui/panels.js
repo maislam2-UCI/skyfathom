@@ -12,6 +12,19 @@ const fmtDec = (d) => { const s = d < 0 ? "−" : "+", a = Math.abs(d), dd = Mat
 const compass = (az) => ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(az / 22.5) % 16];
 const SPECTRAL = { O: "blue, very hot", B: "blue-white, hot", A: "white", F: "yellow-white", G: "yellow (Sun-like)", K: "orange", M: "red, cool" };
 
+function diagText(app) {
+  const n = navigator, st = app.state;
+  return [
+    `NightSky · ${location.protocol}//${location.host}${location.pathname} · secure=${window.isSecureContext} · standalone=${n.standalone ?? (matchMedia("(display-mode: standalone)").matches)}`,
+    `UA: ${n.userAgent}`,
+    `screen ${screen.width}×${screen.height} @${devicePixelRatio} · viewport ${innerWidth}×${innerHeight} · tz ${app.tz()} · lang ${n.language}`,
+    `observer ${st.observer.name} ${st.observer.lat.toFixed(4)},${st.observer.lon.toFixed(4)} (${st.observer.source}) · mode ${app.modeName} · fov ${st.view.fov.toFixed(0)}`,
+    `sensors: orientation=${"DeviceOrientationEvent" in window} permissionAPI=${typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"} camera=${!!n.mediaDevices?.getUserMedia} geolocation=${"geolocation" in n} serviceWorker=${"serviceWorker" in n}`,
+    `catalog: stars ${app.catalog.stars?.n} faint ${app.catalog.faint?.n ?? "-"} dso ${app.catalog.dso?.n} · astronomy-engine ${typeof Astronomy !== "undefined"}`,
+    `errors (${app.diag?.errors.length ?? 0}):`, ...(app.diag?.errors ?? []).slice(-8),
+  ].join("\n");
+}
+
 export function initPanels(app) {
   const st = app.state, sheet = $("#sheet"), inner = $(".sheet-inner");
   const ui = {
@@ -136,7 +149,12 @@ export function initPanels(app) {
         <div class="row"><button class="btn" id="s-reset-align">Reset compass alignment (${st.calibration.dAz.toFixed(1)}° / ${st.calibration.dAlt.toFixed(1)}°)</button></div>
         ${tog("hapticTick", "Haptic tick on selection")}
         <h3>About</h3><p class="muted">NightSky · offline star map, AR finder and astrophotography planner. Data: HYG v4.1 star catalog (CC BY-SA 4.0), Stellarium modern sky culture lines &amp; names (CC BY-SA 4.0), OpenNGC deep-sky catalog (CC BY-SA 4.0), astronomy-engine (MIT), NOAA World Magnetic Model 2025, Open-Meteo forecasts (CC BY 4.0). Location, camera and motion data never leave this device.</p>
-        <div class="row"><button class="btn" id="s-reload">Check for update</button></div>`);
+        <div class="row"><button class="btn" id="s-reload">Check for update</button></div>
+        <h3>Diagnostics</h3>
+        <pre id="s-diag" class="muted" style="white-space:pre-wrap;font-size:11px;user-select:text;-webkit-user-select:text">${h(diagText(app))}</pre>
+        <div class="row"><button class="btn small" id="s-diag-copy">Copy diagnostics</button><button class="btn small" id="s-diag-clear">Clear errors</button></div>`);
+      $("#s-diag-copy").onclick = async () => { try { await navigator.clipboard.writeText(diagText(app)); st.toast("Copied."); } catch { st.toast("Select the text and copy it manually."); } };
+      $("#s-diag-clear").onclick = () => { app.diag.errors.length = 0; try { localStorage.removeItem("nightsky.errors"); } catch { /* ignore */ } $("#s-diag").textContent = diagText(app); };
       inner.querySelectorAll("[data-k]").forEach(cb => cb.onchange = () => { S[cb.dataset.k] = cb.checked; if (cb.dataset.k === "nightMode") document.body.classList.toggle("night", cb.checked); st.save(); app.requestRender(); });
       $("#s-ld").oninput = (e) => { S.labelDensity = +e.target.value; $("#s-ld-v").textContent = S.labelDensity.toFixed(1) + "×"; st.save(); app.requestRender(); };
       $("#s-fov").oninput = (e) => { S.cameraFov = +e.target.value; $("#s-fov-v").textContent = S.cameraFov + "°"; st.save(); app.requestRender(); };

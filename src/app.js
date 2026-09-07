@@ -87,10 +87,25 @@ const app = {
     if (this.modeName === name) return;
     this.mode?.exit?.(this); this.modeName = name; this.mode = MODES[name]; this.state.mode = name;
     document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("active", b.dataset.mode === name));
-    this.mode.enter(this); this.dirty = true; this.ui.updateChips();
+    try { this.mode.enter(this); } catch (e) { report(`${name} failed: ${e.message} @ ${(e.stack || "").split("\n")[1]?.trim() ?? "?"}`); const p = $("#panel"); if (p && name !== "planetarium") { p.hidden = false; p.innerHTML = `<h2>${name} could not open</h2><p class="error">${e.message}</p><p class="muted">${(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p>`; } }
+    this.dirty = true; this.ui.updateChips();
   },
   hud(text) { const h = $("#hud"); if (h.innerHTML !== text) h.innerHTML = text; },
 };
+
+// on-device diagnostics: every uncaught error becomes a toast and is kept for the Settings → Diagnostics panel
+const diag = { errors: [] };
+try { diag.errors = JSON.parse(localStorage.getItem("nightsky.errors") || "[]"); } catch { /* ignore */ }
+function report(msg) {
+  const line = new Date().toISOString().slice(11, 19) + " " + msg;
+  diag.errors.push(line); if (diag.errors.length > 20) diag.errors.shift();
+  try { localStorage.setItem("nightsky.errors", JSON.stringify(diag.errors)); } catch { /* ignore */ }
+  try { app.state.toast("Error: " + msg, 7000); } catch { /* before boot */ }
+  console.error("[nightsky]", msg);
+}
+window.addEventListener("error", (e) => report((e.message || "script error") + " @ " + String(e.filename || "").split("/").pop() + ":" + e.lineno));
+window.addEventListener("unhandledrejection", (e) => report("Promise: " + (e.reason?.stack?.split("\n").slice(0, 2).join(" ") || e.reason?.message || e.reason)));
+app.diag = diag; app.report = report;
 
 function compass(az) { return ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(az / 22.5) % 16]; }
 

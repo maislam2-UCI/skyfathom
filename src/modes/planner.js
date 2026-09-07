@@ -23,6 +23,9 @@ export default {
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
   render(app) {
+    try { this._render(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
+  },
+  _render(app) {
     const st = app.state, obs = app.obs, t = app.now, panel = $("#panel");
     const tw = E.twilight(obs, t), moon = E.moonInfo(obs, t), planets = E.planetsTonight(obs, t);
     const T = (d) => (d ? app.fmtTime(d.getTime()) : "—");

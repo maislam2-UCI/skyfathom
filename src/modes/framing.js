@@ -18,6 +18,9 @@ export default {
   },
   hud(app) { const f = this.fov(app); app.hud(`<b>Frame</b> · ${h(app.state.gear.name)} · ${f.wDeg.toFixed(1)}° × ${f.hDeg.toFixed(1)}° · rotate ${this.angle}°`); },
   render(app) {
+    try { this._render(app); } catch (e) { $("#panel").innerHTML = `<h2>Frame could not open</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p>`; app.report?.("Frame: " + e.message); }
+  },
+  _render(app) {
     const st = app.state, g = st.gear, panel = $("#panel");
     panel.innerHTML = `
       <div class="panel-head"><h2>Framing</h2><button class="btn small" id="fr-collapse">Hide</button></div>
@@ -54,6 +57,9 @@ export default {
     el.innerHTML = `FOV <b>${f.wDeg.toFixed(2)}° × ${f.hDeg.toFixed(2)}°</b> (${(f.wDeg * 60).toFixed(0)}′ × ${(f.hDeg * 60).toFixed(0)}′) · ${scale.toFixed(2)}″/px · Moon ≈ ${(0.52 / f.wDeg * 100).toFixed(0)}% of width · NPF ${((35 * g.aperture + 30 * g.pixelUm) / g.focalMm).toFixed(1)} s`;
   },
   _updateChart(app) {
+    try { this._chart(app); } catch (e) { app.report?.("Frame chart: " + e.message); }
+  },
+  _chart(app) {
     const cv = $("#fr-chart"); if (!cv) return;
     const sel = app.state.selection, ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
     ctx.fillStyle = "#0a0e1c"; ctx.fillRect(0, 0, W, H);
