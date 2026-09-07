@@ -1,4 +1,4 @@
-# NightSky — Plan
+# Skyfathom — Plan
 
 ## Feature matrix (what each reference app does → how we cover it)
 

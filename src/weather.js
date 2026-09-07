@@ -1,6 +1,6 @@
 // Open-Meteo hourly forecast (free, no key): cloud layers, humidity, dew point, wind, visibility.
 // The only network call in the app. Cached per rounded location for 1 hour; works offline from cache.
-const KEY = "nightsky.weather.v1";
+const KEY = "skyfathom.weather.v1";
 export async function forecast(lat, lon, { force = false } = {}) {
   const k = `${lat.toFixed(2)},${lon.toFixed(2)}`;
   let cache = {}; try { cache = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { /* ignore */ }

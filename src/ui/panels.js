@@ -15,7 +15,7 @@ const SPECTRAL = { O: "blue, very hot", B: "blue-white, hot", A: "white", F: "ye
 function diagText(app) {
   const n = navigator, st = app.state;
   return [
-    `NightSky · ${location.protocol}//${location.host}${location.pathname} · secure=${window.isSecureContext} · standalone=${n.standalone ?? (matchMedia("(display-mode: standalone)").matches)}`,
+    `Skyfathom · ${location.protocol}//${location.host}${location.pathname} · secure=${window.isSecureContext} · standalone=${n.standalone ?? (matchMedia("(display-mode: standalone)").matches)}`,
     `UA: ${n.userAgent}`,
     `screen ${screen.width}×${screen.height} @${devicePixelRatio} · viewport ${innerWidth}×${innerHeight} · tz ${app.tz()} · lang ${n.language}`,
     `observer ${st.observer.name} ${st.observer.lat.toFixed(4)},${st.observer.lon.toFixed(4)} (${st.observer.source}) · mode ${app.modeName} · fov ${st.view.fov.toFixed(0)}`,
@@ -73,6 +73,15 @@ export function initPanels(app) {
       }
       const c = rd ? E.constellationAt(rd.ra, rd.dec) : null;
       const below = aa.alt < 0;
+      if (app.modeName === "ar") { // compact card so the pointing guide stays visible
+        box.classList.add("compact");
+        box.innerHTML = `<button class="close" id="info-close">✕</button><div class="title">${h(title)}</div><div class="sub">${h(sub)} · alt ${aa.alt.toFixed(0)}° ${compass(aa.az)}${below ? " · below horizon" : ""}</div>
+          <div class="row"><button class="btn primary" id="info-center">Where is it?</button><button class="btn" id="info-align">Align compass here</button></div>`;
+        $("#info-close").onclick = () => app.select(null); $("#info-center").onclick = () => app.centerOn(sel);
+        $("#info-align").onclick = () => { if (!ar.alignTo(app, sel)) st.toast("Point the ring at this object first, then tap Align.", 3000); };
+        return;
+      }
+      box.classList.remove("compact");
       box.innerHTML = `<button class="close" id="info-close">✕</button>
         <div class="title">${sel.kind === "body" && sel.ref === "Moon" ? title : h(title)}</div><div class="sub">${h(sub)}${c && sel.kind !== "constellation" && sel.kind !== "star" && sel.kind !== "dso" ? " · in " + h(c.name) : ""}</div>
         <div class="grid">
@@ -142,20 +151,22 @@ export function initPanels(app) {
       const S = st.settings;
       const tog = (k, label, hint = "") => `<label class="toggle"><span>${label}${hint ? `<br><span class="muted">${hint}</span>` : ""}</span><input type="checkbox" data-k="${k}" ${S[k] ? "checked" : ""}></label>`;
       inner.insertAdjacentHTML("beforeend", `<h2>Settings</h2>
-        <h3>Display</h3>${tog("nightMode", "Night vision (red)", "keeps your dark adaptation")}${tog("constellationLines", "Constellation lines")}${tog("constellationLabels", "Constellation names")}${tog("boundaries", "Constellation boundaries")}${tog("starLabels", "Star names")}${tog("showDso", "Deep-sky objects")}${tog("dsoLabels", "Deep-sky labels")}${tog("milkyWay", "Milky Way band")}${tog("ecliptic", "Ecliptic")}${tog("altAzGrid", "Alt/az grid")}${tog("showMeridian", "Meridian")}${tog("eqGrid", "RA/Dec grid")}${tog("belowHorizon", "Show sky below the horizon")}
+        <h3>Display</h3>${tog("nightMode", "Night vision (red)", "keeps your dark adaptation")}${tog("constellationLines", "Constellation lines")}${tog("constellationLabels", "Constellation names")}${tog("boundaries", "Constellation boundaries")}${tog("starLabels", "Star names")}${tog("showDso", "Deep-sky objects")}${tog("dsoLabels", "Deep-sky labels")}${tog("milkyWay", "Milky Way (photographic, ESO/S. Brunier)")}${tog("constellationArt", "Constellation artwork")}
+        <div class="field"><label>Artwork opacity <span id="s-ao-v">${Math.round((S.artOpacity ?? 1) * 100)}%</span></label><input id="s-ao" type="range" min="0.2" max="2" step="0.1" value="${S.artOpacity ?? 1}"></div>${tog("ecliptic", "Ecliptic")}${tog("altAzGrid", "Alt/az grid")}${tog("showMeridian", "Meridian")}${tog("eqGrid", "RA/Dec grid")}${tog("belowHorizon", "Show sky below the horizon")}
         <div class="field"><label>Label density <span id="s-ld-v">${S.labelDensity.toFixed(1)}×</span></label><input id="s-ld" type="range" min="0.5" max="2" step="0.1" value="${S.labelDensity}"></div>
         <h3>AR &amp; compass</h3>${tog("applyDeclination", "Correct compass with magnetic declination", `here ${app.declination >= 0 ? "+" : ""}${app.declination.toFixed(1)}° · ${WMM.name}`)}
         <div class="field"><label>Camera field of view across the screen width <span id="s-fov-v">${S.cameraFov}°</span></label><input id="s-fov" type="range" min="20" max="80" step="1" value="${S.cameraFov}"><span class="muted">iPhone main camera in portrait ≈ 37°; ultra-wide ≈ 70°. Adjust until the Moon or a bright star sits under the real one.</span></div>
         <div class="row"><button class="btn" id="s-reset-align">Reset compass alignment (${st.calibration.dAz.toFixed(1)}° / ${st.calibration.dAlt.toFixed(1)}°)</button></div>
         ${tog("hapticTick", "Haptic tick on selection")}
-        <h3>About</h3><p class="muted">NightSky · offline star map, AR finder and astrophotography planner. Data: HYG v4.1 star catalog (CC BY-SA 4.0), Stellarium modern sky culture lines &amp; names (CC BY-SA 4.0), OpenNGC deep-sky catalog (CC BY-SA 4.0), astronomy-engine (MIT), NOAA World Magnetic Model 2025, Open-Meteo forecasts (CC BY 4.0). Location, camera and motion data never leave this device.</p>
+        <h3>About</h3><p class="muted">Skyfathom · offline star map, AR finder and astrophotography planner. Data: HYG v4.1 star catalog (CC BY-SA 4.0), Stellarium modern sky culture lines &amp; names (CC BY-SA 4.0) and constellation illustrations by Johan Meuris (Free Art License), Milky Way panorama ESO/S. Brunier (CC BY 4.0), OpenNGC deep-sky catalog (CC BY-SA 4.0), astronomy-engine (MIT), NOAA World Magnetic Model 2025, Open-Meteo forecasts (CC BY 4.0). Location, camera and motion data never leave this device.</p>
         <div class="row"><button class="btn" id="s-reload">Check for update</button></div>
         <h3>Diagnostics</h3>
         <pre id="s-diag" class="muted" style="white-space:pre-wrap;font-size:11px;user-select:text;-webkit-user-select:text">${h(diagText(app))}</pre>
         <div class="row"><button class="btn small" id="s-diag-copy">Copy diagnostics</button><button class="btn small" id="s-diag-clear">Clear errors</button></div>`);
       $("#s-diag-copy").onclick = async () => { try { await navigator.clipboard.writeText(diagText(app)); st.toast("Copied."); } catch { st.toast("Select the text and copy it manually."); } };
-      $("#s-diag-clear").onclick = () => { app.diag.errors.length = 0; try { localStorage.removeItem("nightsky.errors"); } catch { /* ignore */ } $("#s-diag").textContent = diagText(app); };
-      inner.querySelectorAll("[data-k]").forEach(cb => cb.onchange = () => { S[cb.dataset.k] = cb.checked; if (cb.dataset.k === "nightMode") document.body.classList.toggle("night", cb.checked); st.save(); app.requestRender(); });
+      $("#s-diag-clear").onclick = () => { app.diag.errors.length = 0; try { localStorage.removeItem("skyfathom.errors"); } catch { /* ignore */ } $("#s-diag").textContent = diagText(app); };
+      inner.querySelectorAll("[data-k]").forEach(cb => cb.onchange = () => { S[cb.dataset.k] = cb.checked; if (cb.dataset.k === "nightMode") document.body.classList.toggle("night", cb.checked); st.save(); ui.updateRail(); app.requestRender(); });
+      $("#s-ao").oninput = (e) => { S.artOpacity = +e.target.value; $("#s-ao-v").textContent = Math.round(S.artOpacity * 100) + "%"; st.save(); app.requestRender(); };
       $("#s-ld").oninput = (e) => { S.labelDensity = +e.target.value; $("#s-ld-v").textContent = S.labelDensity.toFixed(1) + "×"; st.save(); app.requestRender(); };
       $("#s-fov").oninput = (e) => { S.cameraFov = +e.target.value; $("#s-fov-v").textContent = S.cameraFov + "°"; st.save(); app.requestRender(); };
       $("#s-reset-align").onclick = () => { ar.resetAlignment(app); st.toast("Compass alignment reset."); ui.close(); };
@@ -163,10 +174,18 @@ export function initPanels(app) {
     },
   };
   app.ui = ui;
+  const rail = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+  rail("#rail-settings", () => ui.open("settings"));
+  rail("#rail-art", () => { st.settings.constellationArt = !st.settings.constellationArt; st.save(); ui.updateRail(); app.requestRender(); st.toast(st.settings.constellationArt ? "Constellation artwork on" : "Constellation artwork off", 1500); });
+  rail("#rail-night", () => { st.settings.nightMode = !st.settings.nightMode; document.body.classList.toggle("night", st.settings.nightMode); st.save(); ui.updateRail(); app.requestRender(); });
+  rail("#rail-locate", () => app.locateOnce(false));
+  rail("#rail-cam", () => ar.toggleCamera(app));
+  rail("#searchbar", () => ui.open("search"));
+  ui.updateRail = () => { $("#rail-art")?.classList.toggle("on", !!st.settings.constellationArt); $("#rail-night")?.classList.toggle("on", !!st.settings.nightMode); };
+  ui.updateRail();
   $("#chip-loc").onclick = () => ui.open("location");
   $("#chip-time").onclick = () => ui.open("time");
-  $("#btn-search").onclick = () => ui.open("search");
-  $("#btn-settings").onclick = () => ui.open("settings");
+
   sheet.addEventListener("click", (e) => { if (e.target === sheet) ui.close(); });
   ui.updateChips();
 }

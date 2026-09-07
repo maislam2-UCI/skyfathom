@@ -9,18 +9,19 @@ export default {
   imu: null, cameraOn: false, sensorsOn: false, lastPose: null, _savedView: null,
   enter(app) {
     const st = app.state;
-    this._savedView = { ...st.view };
+    this._savedView = { ...st.view }; document.body.classList.add("ar-active");
     st.view.projection = "gnomonic"; st.view.fov = st.settings.cameraFov; st.view.roll = 0;
     const ov = $("#ar-overlay"); ov.hidden = false; $("#ar-error").hidden = true;
     if (location.protocol !== "https:" && location.hostname !== "localhost") { $("#ar-error").textContent = "Camera and motion sensors need HTTPS. Open the https:// address (or install the app from one)."; $("#ar-error").hidden = false; }
-    $("#ar-enable").onclick = () => this._start(app, true);
-    $("#ar-nocam").onclick = () => this._start(app, false);
+    $("#ar-enable").onclick = () => this._start(app, false);
+    $("#ar-withcam").onclick = () => this._start(app, true);
+    $("#rail-cam").hidden = false;
     if (imuSupport() === "unsupported") { $("#ar-error").textContent = "This device has no orientation sensors. AR needs a phone or tablet."; $("#ar-error").hidden = false; }
   },
   exit(app) {
     const st = app.state;
     this._stop(app);
-    $("#ar-overlay").hidden = true;
+    document.body.classList.remove("ar-active"); $("#ar-overlay").hidden = true; $("#rail-cam").hidden = true; $("#rail-cam").classList.remove("on");
     st.view.projection = "stereo"; st.view.roll = 0; st.view.fov = this._savedView?.fov ?? 90;
     st.pose.active = false;
   },
@@ -44,13 +45,19 @@ export default {
       catch (e) { st.toast("Camera unavailable: " + e.message + " — continuing with sensors only.", 4500); this.cameraOn = false; }
     }
     $("#ar-overlay").hidden = true;
-    st.toast(`Sensors on (${imuSupport() === "needs-permission" ? "iOS compass" : "Android absolute"}). Declination ${app.declination >= 0 ? "+" : ""}${app.declination.toFixed(1)}° applied. Tap a star, then “Align” if the sky looks shifted.`, 5000);
+    $("#rail-cam").classList.toggle("on", this.cameraOn);
+    st.toast("Sensors on. Move the phone slowly; pick a target from Search and follow the arrow. If the sky looks shifted, tap a bright star you recognise and choose Align.", 6000);
   },
   _stop(app) {
     this.imu?.stop(); this.imu = null; this.sensorsOn = false;
     if (this.cameraOn) stopCamera(app.video); this.cameraOn = false;
   },
-  frame(app, sc) { sc.transparent = this.cameraOn; sc.crosshair = true; sc.fovBox = null; sc.twinkle = this.sensorsOn ? performance.now() / 1000 : 0; if (this.imu) { this.imu.applyDeclination = app.state.settings.applyDeclination; this.imu.declination = app.declination; } app.state.view.fov = app.state.settings.cameraFov; },
+  async toggleCamera(app) {
+    if (this.cameraOn) { stopCamera(app.video); this.cameraOn = false; }
+    else { try { await startCamera(app.video); this.cameraOn = true; } catch (e) { app.state.toast("Camera unavailable: " + e.message, 4000); } }
+    $("#rail-cam").classList.toggle("on", this.cameraOn); app.requestRender();
+  },
+  frame(app, sc) { sc.transparent = this.cameraOn; sc.crosshair = !this.sensorsOn; sc.arGuide = this.sensorsOn; sc.fovBox = null; sc.twinkle = this.sensorsOn ? performance.now() / 1000 : 0; if (this.imu) { this.imu.applyDeclination = app.state.settings.applyDeclination; this.imu.declination = app.declination; } app.state.view.fov = app.state.settings.cameraFov; },
   hud(app) {
     const st = app.state, p = this.lastPose;
     if (!this.sensorsOn) { app.hud(""); return; }

@@ -5,6 +5,8 @@ import { Projector, vecToAltAz, norm24 } from "./engine/transform.js";
 import * as E from "./engine/ephemeris.js";
 import { declination } from "./engine/geomag.js";
 import { SkyRenderer } from "./render/sky.js";
+import { SkyGL } from "./render/skygl.js";
+import { forecast } from "./weather.js";
 import { initPanels } from "./ui/panels.js";
 import { getFix } from "./sensors/gps.js";
 import planetarium from "./modes/planetarium.js";
@@ -51,6 +53,7 @@ const app = {
       return { name, alt: p.alt, az: p.az, ra: p.ra, dec: p.dec, distAu: p.distAu, mag: il.mag, phaseFraction: il.phaseFraction, diamDeg };
     });
     this.sunAlt = this.bodies[0].alt;
+    this.projector.setSky(this.lstH, this.state.observer.lat); // keep alt/az readouts correct even before the next frame
     this.dirty = true;
   },
   /** Alt/az of any selection right now. */
@@ -110,13 +113,13 @@ const app = {
 
 // on-device diagnostics: every uncaught error becomes a toast and is kept for the Settings → Diagnostics panel
 const diag = { errors: [] };
-try { diag.errors = JSON.parse(localStorage.getItem("nightsky.errors") || "[]"); } catch { /* ignore */ }
+try { diag.errors = JSON.parse(localStorage.getItem("skyfathom.errors") || "[]"); } catch { /* ignore */ }
 function report(msg) {
   const line = new Date().toISOString().slice(11, 19) + " " + msg;
   diag.errors.push(line); if (diag.errors.length > 20) diag.errors.shift();
-  try { localStorage.setItem("nightsky.errors", JSON.stringify(diag.errors)); } catch { /* ignore */ }
+  try { localStorage.setItem("skyfathom.errors", JSON.stringify(diag.errors)); } catch { /* ignore */ }
   try { app.state.toast("Error: " + msg, 7000); } catch { /* before boot */ }
-  console.error("[nightsky]", msg);
+  console.error("[skyfathom]", msg);
 }
 window.addEventListener("error", (e) => report((e.message || "script error") + " @ " + String(e.filename || "").split("/").pop() + ":" + e.lineno));
 window.addEventListener("unhandledrejection", (e) => report("Promise: " + (e.reason?.stack?.split("\n").slice(0, 2).join(" ") || e.reason?.message || e.reason)));
@@ -128,6 +131,8 @@ async function boot() {
   const st = app.state; st.load();
   if (st.settings.nightMode) document.body.classList.add("night");
   app.renderer = new SkyRenderer(app.canvas);
+  try { app.gl = new SkyGL($("#skygl"), "./assets/milkyway.jpg"); app.gl.onReady = () => { app.dirty = true; }; } catch (e) { report("WebGL sky unavailable: " + e.message); app.gl = null; }
+  if (!app.gl?.ok) $("#skygl").hidden = true;
   try { await app.catalog.load("./data/"); }
   catch (e) { $("#loading-text").textContent = "Could not load catalogs: " + e.message; return; }
   app.syncObserver(); app.updateEphemeris(true);
@@ -139,16 +144,33 @@ async function boot() {
   st.subscribe(() => { app.dirty = true; app.ui.updateChips(); });
   window.addEventListener("resize", () => (app.dirty = true));
   if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("./sw.js").catch(() => {});
-  if (st.observer.source === "gps" || !localStorage.getItem("nightsky.state.v1")) locateOnce(true);
+  if (st.observer.source === "gps" || !localStorage.getItem("skyfathom.state.v1")) locateOnce(true);
   setTimeout(() => app.catalog.loadFaint().then(() => (app.dirty = true)), 4000);
+  refreshBadges(); setInterval(refreshBadges, 60000);
   const ua = navigator.userAgent, ios = /iPhone|iPad/.test(ua) && !window.navigator.standalone;
-  if (ios && !localStorage.getItem("nightsky.installHint")) { setTimeout(() => st.toast("Tip: Share → “Add to Home Screen” for full-screen use.", 6000), 3000); localStorage.setItem("nightsky.installHint", "1"); }
+  if (ios && !localStorage.getItem("skyfathom.installHint")) { setTimeout(() => st.toast("Tip: Share → “Add to Home Screen” for full-screen use.", 6000), 3000); localStorage.setItem("skyfathom.installHint", "1"); }
 }
+/** Top-left sky-condition badges: cloud now (Open-Meteo), Moon illumination, hours of astronomical darkness. */
+async function refreshBadges() {
+  const st = app.state, o = st.observer;
+  try {
+    const m = E.moonInfo(app.obs, app.now); $("#badge-moon b").textContent = Math.round(m.illumination * 100) + "%";
+    const tw = E.twilight(app.obs, app.now); const dark = tw.astroDusk && tw.astroDawn ? (tw.astroDawn - tw.astroDusk) / 3600000 : 0;
+    $("#badge-dark b").textContent = dark ? dark.toFixed(1) + " h" : "none"; $("#badge-dark").classList.toggle("bad", dark < 4);
+  } catch (e) { report("badges: " + e.message); }
+  try {
+    const wx = await forecast(o.lat, o.lon); const now = app.now;
+    const h = wx.hours.reduce((b, x) => (Math.abs(x.t - now) < Math.abs(b.t - now) ? x : b), wx.hours[0]);
+    const el = $("#badge-cloud"); el.querySelector("b").textContent = h.cloud + "%"; el.classList.toggle("good", h.cloud <= 25); el.classList.toggle("bad", h.cloud >= 70);
+    el.title = "Cloud cover " + h.cloud + "% · humidity " + h.rh + "% · wind " + h.wind + " km/h (" + app.fmtTime(h.t) + ")";
+  } catch { $("#badge-cloud b").textContent = "–"; }
+}
+app.refreshBadges = refreshBadges;
 export async function locateOnce(silent = false) {
   try {
     const f = await getFix();
     app.state.observer = { name: "My location", lat: f.lat, lon: f.lon, altM: f.altM, tz: deviceTimeZone(), source: "gps", accuracy: f.accuracy };
-    app.state.save(); app.syncObserver(); app.updateEphemeris(true); app.state.emit();
+    app.state.save(); app.syncObserver(); app.updateEphemeris(true); app.state.emit(); refreshBadges();
     if (!silent) app.state.toast(`Located: ${f.lat.toFixed(3)}, ${f.lon.toFixed(3)} (±${Math.round(f.accuracy)} m)`);
   } catch (e) { if (!silent) app.state.toast(e.message, 4000); }
 }
@@ -169,10 +191,15 @@ function loop() {
   P.setSize(app.renderer.w, app.renderer.h);
   P.setSky(app.lstH, st.observer.lat);
   P.setView(st.view);
-  const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0 };
+  const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0, arGuide: false,
+    glBackground: !!app.gl?.ok, requestRender: () => app.requestRender(), selectionLabel: st.selection ? app.labelOf(st.selection) : "" };
   app.mode?.frame?.(app, scene);
+  if (app.gl?.ok) {
+    app.gl.resize(app.renderer.w, app.renderer.h, app.renderer.dpr);
+    app.gl.render({ projector: P, sunAlt: app.sunAlt, sunAz: app.bodies[0]?.az ?? 0, epochMs: app.now, transparent: scene.transparent, mwIntensity: st.settings.milkyWay ? (scene.transparent ? 2.6 : 1.0) : 0 }, app.renderer.dpr);
+  }
   app.renderer.render(scene);
   if (!scene.ripple) app._ripple = null; else app.dirty = true;
 }
-window.nightsky = app; // debugging handle
+window.skyfathom = app; // debugging handle
 boot();

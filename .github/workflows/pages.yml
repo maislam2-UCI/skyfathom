@@ -24,7 +24,7 @@ jobs:
       - name: Run engine tests
         run: npm test
       - name: Stamp service-worker cache version with the commit
-        run: sed -i "s/const VERSION = \"nightsky-v[^\"]*\"/const VERSION = \"nightsky-${GITHUB_SHA::8}\"/" src/sw.js
+        run: sed -i "s/const VERSION = \"skyfathom-v[^\"]*\"/const VERSION = \"skyfathom-${GITHUB_SHA::8}\"/" src/sw.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

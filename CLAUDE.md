@@ -1,4 +1,6 @@
-# CLAUDE.md — NightSky · Project Brief
+# CLAUDE.md — Skyfathom · Project Brief
+
+> Product name **Skyfathom** (renamed from NightSky on 2026-09-07: that name belongs to iCandi Apps). Folder is still `C:\dev\nightsky`; GitHub repo `maislam2-UCI/skyfathom`, live at https://maislam2-uci.github.io/skyfathom/.
 
 > Read fully at session start. Single source of truth for this project.
 > Operator: Md Aminul Islam. Repo: `C:\dev\nightsky`. Target: **iPhone 17 Pro Max (Safari PWA) first, Android Chrome second**
@@ -33,11 +35,13 @@ src/
   engine/   state.js (observable state, presets, gear)  transform.js (pure math: sidereal time, alt/az, precession, Projector)
             ephemeris.js (astronomy-engine wrapper)  catalog.js (typed arrays, precession, picking, search)
             geomag.js + geomag-coeffs.js (WMM2025 declination)
-  render/   sky.js (Canvas 2D renderer: stars, lines, DSOs, bodies with Moon phase, Milky Way, grids, labels, picking)
+  render/   sky.js (Canvas 2D: stars, lines, DSOs, bodies, constellation art, AR guide, labels, picking)
+            skygl.js (WebGL: atmosphere + photographic Milky Way texture, same projection as the 2D layer)
   sensors/  gps.js  imu.js (iOS compass + Android absolute orientation → look vector)  camera.js
   modes/    planetarium.js  ar.js  planner.js  framing.js   (enter/exit/frame/hud contract)
   ui/       panels.js (search, location, time, settings sheets + object card)  app.css
   data/     generated catalogs (README lists sources + licenses)   vendor/ astronomy-engine (MIT)
+  assets/   milkyway.jpg (ESO/S. Brunier, CC BY 4.0, baked from data/raw via tools/serve.mjs POST /__save), art/*.png (Stellarium, Free Art License)
 tools/      serve.mjs  build-catalog.mjs  make-icons.mjs  make-cert.mjs
 tests/      engine.test.js (node --test; accuracy checks against NOAA / known values)
 ```

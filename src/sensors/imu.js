@@ -49,7 +49,10 @@ export class Imu {
     // low-pass on vectors
     if (!this._look) { this._look = look; this._up = up; }
     else {
-      const k = this.smooth;
+      const ln = Math.hypot(this._look[0], this._look[1], this._look[2]) || 1;
+      const dot = Math.max(-1, Math.min(1, (this._look[0] * look[0] + this._look[1] * look[1] + this._look[2] * look[2]) / ln));
+      const ang = Math.acos(dot); // radians between filtered and raw look: quick when turning, steady when still
+      const k = ang > 0.08 ? 0.6 : ang > 0.025 ? 0.3 : 0.1;
       for (let i = 0; i < 3; i++) { this._look[i] += (look[i] - this._look[i]) * k; this._up[i] += (up[i] - this._up[i]) * k; }
     }
     const L = norm(this._look), U = norm(this._up);

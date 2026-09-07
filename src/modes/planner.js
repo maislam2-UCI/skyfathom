@@ -59,6 +59,26 @@ export default {
     const npf = ((35 * g.aperture + 30 * g.pixelUm) / g.focalMm), rule500 = 500 / g.focalEq, coc = Math.hypot(g.sensorW, g.sensorH) / 1500, hyper = (g.focalMm * g.focalMm) / (g.aperture * coc) / 1000 + g.focalMm / 1000;
     const arcsecPx = 206.265 * g.pixelUm / g.focalMm;
 
+    // visibility bars across the observing night (anchor → anchor + 24 h)
+    const nt0 = tw.anchor.getTime(), nspan = 24 * 3600000, pct = (ms) => Math.max(0, Math.min(100, ((ms - nt0) / nspan) * 100));
+    const darkL = tw.astroDusk ? pct(tw.astroDusk.getTime()) : 0, darkR = tw.astroDawn ? pct(tw.astroDawn.getTime()) : 100;
+    const nightL = tw.sunset ? pct(tw.sunset.getTime()) : 0, nightR = tw.sunrise ? pct(tw.sunrise.getTime()) : 100;
+    const BODY_COL = { Moon: "#e6e6e6", Mercury: "#c8bfae", Venus: "#fff1c9", Mars: "#ff8f5e", Jupiter: "#ffd9a8", Saturn: "#f2dfa5", Uranus: "#9fe9e0", Neptune: "#86a9ff" };
+    const rowsVis = ["Moon", ...planets.map(p => p.body)].map(name => {
+      const rs = E.riseSet(name, obs, nt0, 1.05);
+      const segs = [];
+      const up0 = E.bodyPosition(name, obs, nt0).alt > 0;
+      if (up0) { segs.push([0, rs.set ? pct(rs.set.getTime()) : 100]); if (rs.rise && rs.set && rs.rise > rs.set) segs.push([pct(rs.rise.getTime()), 100]); }
+      else if (rs.rise) { segs.push([pct(rs.rise.getTime()), rs.set && rs.set > rs.rise ? pct(rs.set.getTime()) : 100]); }
+      const p = planets.find(x => x.body === name);
+      const mag = name === "Moon" ? moon.mag : p.mag, best = p ? `${p.maxAlt.toFixed(0)}° @ ${app.fmtTime(p.bestTime.getTime())}` : `${Math.round(moon.illumination * 100)}% lit`;
+      return `<div class="vis-row"><div class="vis-name"><i style="background:${BODY_COL[name]}"></i>${name}<small>${best}</small></div>
+        <div class="vis-track"><div class="vis-night" style="left:${nightL}%;width:${nightR - nightL}%"></div><div class="vis-dark" style="left:${darkL}%;width:${darkR - darkL}%"></div>
+        ${segs.map(([a, b]) => `<div class="vis-bar" style="left:${a}%;width:${Math.max(0.5, b - a)}%;background:${BODY_COL[name]}"></div>`).join("")}
+        <div class="vis-now" style="left:${pct(t)}%"></div></div>
+        <button class="btn small" data-body="${name}">Show</button></div>`;
+    });
+    const visRows = rowsVis.join("") + `<div class="vis-axis"><span>${app.fmtTime(nt0)}</span><span>${app.fmtTime(nt0 + 6 * 3600000)}</span><span>${app.fmtTime(nt0 + 12 * 3600000)}</span><span>${app.fmtTime(nt0 + 18 * 3600000)}</span><span>${app.fmtTime(nt0 + 24 * 3600000)}</span></div><div class="legend">Shaded = night, darker = full astronomical darkness, white line = now.</div>`;
     panel.innerHTML = `
       <div class="panel-head"><h2>Tonight · ${h(st.observer.name)}</h2><span class="muted" id="pl-now">${app.fmtTime(t)}</span></div>
       <div class="muted">${app.fmtDate(tw.anchor.getTime())} · night of ${darkHours ? darkHours.toFixed(1) + " h full darkness" : "no astronomical darkness"}</div>
@@ -77,10 +97,8 @@ export default {
         <div><b>Distance</b>${Math.round(moon.distKm).toLocaleString()} km</div>
       </div>
       <h3>Milky Way core (Sagittarius)</h3><p>${mw}</p>
-      <h3>Planets tonight</h3>
-      <table><tr><th>Planet</th><th class="num">Mag</th><th>Rise</th><th>Set</th><th class="num">Max alt</th><th></th></tr>
-      ${planets.map(p => `<tr><td>${p.body}</td><td class="num">${p.mag.toFixed(1)}</td><td>${T(p.rise)}</td><td>${T(p.set)}</td><td class="num">${p.maxAlt.toFixed(0)}° <span class="muted">${app.fmtTime(p.bestTime.getTime())}</span></td><td>${p.visible ? `<button class="btn small" data-body="${p.body}">Show</button>` : `<span class="tag bad">down</span>`}</td></tr>`).join("")}
-      </table>
+      <h3>Solar system tonight <span class="muted">(bars = above the horizon)</span></h3>
+      <div class="vis">${visRows}</div>
       <h3>Best deep-sky targets (Messier, &gt; 30° up in darkness)</h3>
       <div class="list" id="pl-targets">${targets.slice(0, 14).map(x => `<button data-dso="${x.i}"><span>${h(app.catalog.dsoLabel(x.o))} <small>${x.o.typeName}</small></span><small>mag ${x.o.mag ?? "?"} · ${x.maxAlt.toFixed(0)}° @ ${app.fmtTime(x.bestT)}</small></button>`).join("") || "<p class='muted'>Nothing reaches 30° during darkness.</p>"}</div>
       <h3>Cloud forecast <span class="muted" id="wx-src">(Open-Meteo)</span></h3>

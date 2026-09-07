@@ -59,7 +59,7 @@ export class Catalog {
       for (const i of idx) { const v = eqVec(s.ra[i], s.dec[i]); sx += v[0]; sy += v[1]; sz += v[2]; }
       const nn = Math.hypot(sx, sy, sz) || 1;
       const center = [sx / nn, sy / nn, sz / nn];
-      return { abbr: c.abbr, name: c.name, latin: c.latin, segs: Int32Array.from(segs), center, centerDate: center, starCount: idx.size };
+      return { abbr: c.abbr, name: c.name, latin: c.latin, segs: Int32Array.from(segs), center, centerDate: center, starCount: idx.size, art: c.art && c.art.anchors.every(a => s.byHip.has(a[2])) ? { ...c.art, idx: c.art.anchors.map(a => s.byHip.get(a[2])) } : null };
     });
     this.boundaries = json.boundaries; // [ra1, dec1, ra2, dec2] J2000, degrees/hours
     this.boundaryVecs = this.boundaries.map(([r1, d1, r2, d2]) => [eqVec(r1, d1), eqVec(r2, d2)]);

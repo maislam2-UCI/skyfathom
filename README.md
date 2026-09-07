@@ -1,14 +1,14 @@
-# NightSky
+# Skyfathom
 
 Night-sky map, AR star finder and astrophotography planner as an installable web app.
 Runs on iPhone (Safari) and Android (Chrome), works offline, anywhere on Earth.
-Zero dependencies at runtime and at build time (Node ≥ 20 only).
+Zero dependencies at runtime and at build time (Node ≥ 20 only). Live at https://maislam2-uci.github.io/skyfathom/
 
 ## What it does
 
 | Tab | Features |
 |---|---|
-| **Map** | 9,000 naked-eye stars (+32,000 fainter ones when zoomed), 88 constellations with figures, names and boundaries, ~1,000 deep-sky objects incl. all 110 Messier, Sun/Moon (with correct phase and bright-limb direction)/planets, Milky Way band, ecliptic, alt/az and RA/Dec grids, horizon with cardinal points, twilight-coloured sky, tap to identify, search, time travel |
+| **Map** | Photographic Milky Way (ESO panorama rendered per pixel in WebGL), mythological constellation artwork anchored to the real stars,  9,000 naked-eye stars (+32,000 fainter ones when zoomed), 88 constellations with figures, names and boundaries, ~1,000 deep-sky objects incl. all 110 Messier, Sun/Moon (with correct phase and bright-limb direction)/planets, Milky Way band, ecliptic, alt/az and RA/Dec grids, horizon with cardinal points, twilight-coloured sky, tap to identify, search, time travel |
 | **AR** | Rear camera + phone orientation: point at the sky and see what you are looking at. iOS compass and Android absolute orientation both supported; compass corrected with the World Magnetic Model 2025; tap-a-star alignment for residual error; adjustable camera field of view |
 | **Tonight** | Sunset, civil/nautical/astronomical dusk and dawn, sunrise; Moon phase, age, rise/set, next quarter; Milky-Way core window; every planet's rise/set/best altitude; best Messier targets above 30°; hourly cloud/humidity/wind forecast (Open-Meteo); NPF / 500-rule / hyperfocal calculators for your gear |
 | **Frame** | Camera/telescope field-of-view rectangle over the sky (iPhone 17 Pro Max lenses, APS-C, full frame, Seestar, refractor presets or custom), rotation, arcsec/px, and an altitude-over-night chart for the selected object |
@@ -52,6 +52,6 @@ docs/           PLAN.md, DECISIONS.md
 ```
 
 ## Data & licenses
-HYG v4.1 stars (CC BY-SA 4.0) · Stellarium modern sky culture lines/names (CC BY-SA 4.0) · OpenNGC (CC BY-SA 4.0) ·
+HYG v4.1 stars (CC BY-SA 4.0) · Stellarium modern sky culture lines/names (CC BY-SA 4.0) and illustrations by Johan Meuris (Free Art License) · Milky Way panorama ESO/S. Brunier (CC BY 4.0) · OpenNGC (CC BY-SA 4.0) ·
 astronomy-engine (MIT) · NOAA/BGS World Magnetic Model 2025 (public domain) · Open-Meteo (CC BY 4.0).
 Location, camera and motion data never leave the device; the forecast request is the only network call.

@@ -33,8 +33,9 @@ const DEFAULT_SETTINGS = {
   constellationLines: true, constellationLabels: true, boundaries: false, starLabels: true, dsoLabels: true, showDso: true,
   altAzGrid: false, eqGrid: false, ecliptic: true, milkyWay: true, belowHorizon: false, nightMode: false,
   applyDeclination: true, cameraFov: 37, showMeridian: false, hapticTick: true, labelDensity: 1,
+  constellationArt: true, artOpacity: 1,
 };
-const KEY = "nightsky.state.v1";
+const KEY = "skyfathom.state.v1";
 
 export function createState() {
   const listeners = new Set();

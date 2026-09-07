@@ -13,7 +13,7 @@ const candidates = ["openssl", "C:\\Program Files\\Git\\usr\\bin\\openssl.exe", 
 let ok = false;
 for (const bin of candidates) {
   try {
-    execFileSync(bin, ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "825", "-subj", "/CN=NightSky dev", "-addext", "subjectAltName=" + san,
+    execFileSync(bin, ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "825", "-subj", "/CN=Skyfathom dev", "-addext", "subjectAltName=" + san,
       "-keyout", dir + "key.pem", "-out", dir + "cert.pem"], { stdio: "pipe" });
     ok = true; console.log(`certs/cert.pem + key.pem created for ${san}\nNext: npm run dev → open https://<laptop-ip>:4322 on the phone, accept the warning once.`); break;
   } catch (e) { if (existsSync(dir + "cert.pem")) { ok = true; break; } }

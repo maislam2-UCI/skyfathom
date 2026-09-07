@@ -46,6 +46,7 @@ const constellations = sc.constellations.map(c => ({
   name: c.common_name.english,
   latin: c.common_name.native,
   lines: c.lines,
+  art: c.image ? { file: c.image.file.replace("illustrations/", ""), size: c.image.size, anchors: c.image.anchors.map(a => [a.pos[0], a.pos[1], a.hip]) } : null,
 }));
 // boundaries: "001:002 M+ 22:52:00 +34:30:00 22:52:00 +52:30:00 AND LAC"
 const hms = (s) => { const [h, m, sec] = s.split(":").map(Number); return h + m / 60 + sec / 3600; };

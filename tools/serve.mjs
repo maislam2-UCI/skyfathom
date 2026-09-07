@@ -19,6 +19,15 @@ const MIME = {
 };
 async function handler(req, res) {
   let path = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  // dev-only helper: POST /__save?name=<file> writes a base64 body into src/assets (used to bake textures in the browser)
+  if (req.method === "POST" && path === "/__save" && (req.socket.remoteAddress || "").match(/127[.]0[.]0[.]1|::1|::ffff:127/)) {
+    const name = new URL(req.url, "http://x").searchParams.get("name") || "";
+    if (!/^[A-Za-z0-9_.-]+[.](jpg|png|webp)$/.test(name)) { res.writeHead(400); return res.end("bad name"); }
+    let body = ""; req.setEncoding("utf8"); for await (const c of req) body += c;
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(ROOT, "assets", name), Buffer.from(body.replace(/^data:[^,]*,/, ""), "base64"));
+    res.writeHead(200, { "Content-Type": "text/plain" }); return res.end("saved " + name);
+  }
   if (path.endsWith("/")) path += "index.html";
   const file = normalize(join(ROOT, path));
   if (!file.startsWith(normalize(ROOT))) { res.writeHead(403); return res.end(); }
@@ -30,9 +39,9 @@ async function handler(req, res) {
   } catch { res.writeHead(404, { "Content-Type": "text/plain" }); res.end("404 " + path); }
 }
 const lan = Object.values(networkInterfaces()).flat().filter(i => i?.family === "IPv4" && !i.internal).map(i => i.address);
-httpServer(handler).listen(PORT, "0.0.0.0", () => console.log(`nightsky http : http://localhost:${PORT}` + lan.map(a => `  http://${a}:${PORT}`).join("")));
+httpServer(handler).listen(PORT, "0.0.0.0", () => console.log(`skyfathom http : http://localhost:${PORT}` + lan.map(a => `  http://${a}:${PORT}`).join("")));
 const cert = join(CERT_DIR, "cert.pem"), key = join(CERT_DIR, "key.pem");
 if (existsSync(cert) && existsSync(key)) {
   httpsServer({ cert: readFileSync(cert), key: readFileSync(key) }, handler).listen(SPORT, "0.0.0.0", () =>
-    console.log(`nightsky https: https://localhost:${SPORT}` + lan.map(a => `  https://${a}:${SPORT}`).join("") + "\n  (self-signed: accept the warning once on the phone; needed for camera + motion sensors)"));
+    console.log(`skyfathom https: https://localhost:${SPORT}` + lan.map(a => `  https://${a}:${SPORT}`).join("") + "\n  (self-signed: accept the warning once on the phone; needed for camera + motion sensors)"));
 } else console.log("no certs/ — HTTPS disabled. Run `npm run cert` to enable camera + sensors on the phone.");

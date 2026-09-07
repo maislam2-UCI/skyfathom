@@ -12,7 +12,8 @@ const TAU = Math.PI * 2;
 
 export class SkyRenderer {
   constructor(canvas) {
-    this.canvas = canvas; this.ctx = canvas.getContext("2d", { alpha: false });
+    this.canvas = canvas; this.ctx = canvas.getContext("2d", { alpha: true });
+    this.art = new Map();
     this.dpr = 1; this.w = 1; this.h = 1;
     this._mw = null; this._mwEpoch = null; this._ecl = null; this._eclEpoch = null;
     this.labels = []; this.hits = [];
@@ -35,6 +36,7 @@ export class SkyRenderer {
     this.vis = this._starVisibility(sc.sunAlt);
     this._background(sc);
     if (S.milkyWay) this._milkyWay(sc);
+    if (S.constellationArt && !sc.transparent) this._constellationArt(sc);
     if (S.eqGrid) this._eqGrid(sc);
     if (S.altAzGrid) this._altAzGrid(sc);
     if (S.ecliptic) this._ecliptic(sc);
@@ -50,6 +52,7 @@ export class SkyRenderer {
     if (sc.fovBox) this._fovBox(sc);
     if (sc.selection) this._selection(sc);
     if (sc.crosshair) this._crosshair(sc);
+    if (sc.arGuide) this._arGuide(sc);
     if (sc.ripple) this._ripple(sc);
     if (S.nightMode) { ctx.globalCompositeOperation = "multiply"; ctx.fillStyle = "#ff2a1a"; ctx.fillRect(0, 0, this.w, this.h); ctx.globalCompositeOperation = "source-over"; }
   }
@@ -57,7 +60,7 @@ export class SkyRenderer {
   // ---------- sky background: gradient by Sun altitude, twilight glow toward the Sun, skyglow above the horizon ----------
   _background(sc) {
     const { ctx } = this, a = sc.sunAlt, P = sc.projector;
-    if (sc.transparent) { ctx.clearRect(0, 0, this.w, this.h); return; }
+    if (sc.transparent || sc.glBackground) { ctx.clearRect(0, 0, this.w, this.h); return; }
     let top, bottom;
     if (a > 0) { top = "#1d63d0"; bottom = "#9cc4f5"; }
     else if (a > -6) { const t = -a / 6; top = mix("#1b4d9e", "#0a1838", t); bottom = mix("#e39a5a", "#3b2a44", t); }
@@ -125,7 +128,7 @@ export class SkyRenderer {
     const vis = this.vis; if (vis <= 0) return;
     const out = [0, 0, 0], ar = sc.transparent, boost = ar ? 4.5 : 1;
     ctx.globalCompositeOperation = "lighter";
-    for (const p of this._mw) {
+    for (const p of sc.glBackground ? [] : this._mw) {
       if (!sc.settings.belowHorizon && P.eqToHor(p.v[0], p.v[1], p.v[2])[2] < -0.12) continue;
       P.projectEq(p.v[0], p.v[1], p.v[2], out); if (!out[2]) continue;
       const R = Math.min(this.w * 1.6, p.half * this.pxDeg * 1.5);
@@ -136,7 +139,7 @@ export class SkyRenderer {
       ctx.fillStyle = g; ctx.fillRect(out[0] - R, out[1] - R, 2 * R, 2 * R);
     }
     ctx.globalCompositeOperation = "source-over";
-    if (!ar) for (const p of this._rift) { // dust lanes: soft dark blobs
+    if (!ar && !sc.glBackground) for (const p of this._rift) { // dust lanes: soft dark blobs
       if (!sc.settings.belowHorizon && P.eqToHor(p.v[0], p.v[1], p.v[2])[2] < -0.05) continue;
       P.projectEq(p.v[0], p.v[1], p.v[2], out); if (!out[2]) continue;
       const R = Math.min(this.w, p.half * this.pxDeg * 1.6);
@@ -164,6 +167,73 @@ export class SkyRenderer {
     }
   }
 
+  // ---------- constellation artwork (Stellarium modern sky culture, Johan Meuris, Free Art License) ----------
+  _constellationArt(sc) {
+    const { ctx } = this, P = sc.projector, s = sc.catalog.stars, out = [0, 0, 0];
+    const vis = this.vis; if (vis <= 0) return;
+    const fov = P.view.fov; if (fov > 130) return;
+    let loads = 0;
+    for (const c of sc.catalog.cons) {
+      if (!c.art) continue;
+      const pts = [];
+      let ok = true, below = 0;
+      for (const i of c.art.idx) { P.projectEq(s.x[i], s.y[i], s.z[i], out); if (!out[2]) { ok = false; break; } pts.push([out[0], out[1]]); if (P.eqToHor(s.x[i], s.y[i], s.z[i])[2] < 0) below++; }
+      if (!ok || (below === 3 && !sc.settings.belowHorizon)) continue;
+      if (pts.every(p => p[0] < -this.w || p[0] > 2 * this.w || p[1] < -this.h || p[1] > 2 * this.h)) continue;
+      let img = this.art.get(c.art.file);
+      if (!img) { if (loads++ > 3) continue; img = new Image(); img.decoding = "async"; img.src = "./assets/art/" + c.art.file; this.art.set(c.art.file, img); img.onload = () => { sc.requestRender?.(); }; continue; }
+      if (!img.complete || !img.naturalWidth) continue;
+      // affine map: image anchor pixels → screen
+      const [a0, a1, a2] = c.art.anchors, [q0, q1, q2] = pts;
+      const det = (a1[0] - a0[0]) * (a2[1] - a0[1]) - (a2[0] - a0[0]) * (a1[1] - a0[1]);
+      if (Math.abs(det) < 1e-6) continue;
+      const A = ((q1[0] - q0[0]) * (a2[1] - a0[1]) - (q2[0] - q0[0]) * (a1[1] - a0[1])) / det;
+      const C = ((q2[0] - q0[0]) * (a1[0] - a0[0]) - (q1[0] - q0[0]) * (a2[0] - a0[0])) / det;
+      const B = ((q1[1] - q0[1]) * (a2[1] - a0[1]) - (q2[1] - q0[1]) * (a1[1] - a0[1])) / det;
+      const D = ((q2[1] - q0[1]) * (a1[0] - a0[0]) - (q1[1] - q0[1]) * (a2[0] - a0[0])) / det;
+      const E = q0[0] - A * a0[0] - C * a0[1], Fy = q0[1] - B * a0[0] - D * a0[1];
+      const scale = Math.sqrt(Math.abs(A * D - B * C)); if (scale > 6 || scale < 0.02) continue;
+      const sel = sc.selection, hl = (sel?.kind === "constellation" && sel.ref === c) || (sel?.kind === "star" && sel.set.con[sel.index] === c.abbr);
+      ctx.save(); ctx.setTransform(this.dpr * A, this.dpr * B, this.dpr * C, this.dpr * D, this.dpr * E, this.dpr * Fy);
+      ctx.globalAlpha = (hl ? 0.55 : 0.26) * vis * sc.settings.artOpacity;
+      ctx.drawImage(img, 0, 0, c.art.size[0], c.art.size[1]);
+      ctx.restore(); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); ctx.globalAlpha = 1;
+    }
+  }
+  // ---------- AR pointing guide: big ring with altitude, arrow toward the selected target ----------
+  _arGuide(sc) {
+    const { ctx } = this, P = sc.projector, cx = this.w / 2, cy = this.h / 2, R = Math.min(this.w, this.h) * 0.23;
+    const c = P.unproject(cx, cy);
+    const sel = sc.selection; let tgt = null, name = "";
+    if (sel && sel.kind !== "constellation") {
+      if (sel.kind === "body") { const b = sc.bodies.find(b => b.name === sel.ref); if (b) tgt = horVec(b.alt, b.az); name = sel.ref; }
+      else { const s = sel.set, i = sel.index; const h = P.eqToHor(s.x[i], s.y[i], s.z[i]); tgt = h; name = sc.selectionLabel || ""; }
+    }
+    let sep = null, locked = false, dirAng = 0, tgtBehind = false;
+    if (tgt) {
+      const m = P.horCam, X = m[0] * tgt[0] + m[1] * tgt[1] + m[2] * tgt[2], Y = m[3] * tgt[0] + m[4] * tgt[1] + m[5] * tgt[2], Z = m[6] * tgt[0] + m[7] * tgt[1] + m[8] * tgt[2];
+      sep = Math.acos(Math.max(-1, Math.min(1, Z))) * 180 / Math.PI; locked = sep < 2.5; tgtBehind = Z < 0;
+      dirAng = Math.atan2(-Y, X);
+    }
+    ctx.lineWidth = 3; ctx.strokeStyle = locked ? "rgba(120,255,170,0.95)" : "rgba(255,255,255,0.55)";
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, R + 10, 0, TAU); ctx.stroke();
+    ctx.fillStyle = locked ? "rgba(120,255,170,0.95)" : "rgba(255,255,255,0.8)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "600 22px system-ui"; ctx.fillText(`${Number.isFinite(c.alt) ? c.alt.toFixed(0) : "–"}°`, cx, cy - 4);
+    ctx.font = "11px system-ui"; ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.fillText("altitude", cx, cy + 16);
+    if (tgt && !locked) {
+      const d = R + 34, ax = cx + Math.cos(dirAng) * d, ay = cy + Math.sin(dirAng) * d;
+      ctx.save(); ctx.translate(ax, ay); ctx.rotate(dirAng);
+      ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(-14, -16); ctx.lineTo(-6, 0); ctx.lineTo(-14, 16); ctx.closePath(); ctx.fill(); ctx.restore();
+      ctx.font = "600 13px system-ui"; ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 3;
+      const tx = cx, ty = cy - R - 26; const msg = `${name} · ${sep.toFixed(0)}° ${tgtBehind ? "behind you" : "away"}`;
+      ctx.strokeText(msg, tx, ty); ctx.fillText(msg, tx, ty);
+    } else if (tgt && locked) {
+      ctx.font = "600 14px system-ui"; ctx.fillStyle = "rgba(120,255,170,0.95)"; ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 3; ctx.strokeText(`On target: ${name}`, cx, cy - R - 26); ctx.fillText(`On target: ${name}`, cx, cy - R - 26);
+    }
+  }
   _polyline(points, style, width, dash) {
     const { ctx } = this;
     ctx.strokeStyle = style; ctx.lineWidth = width; ctx.setLineDash(dash || []);
