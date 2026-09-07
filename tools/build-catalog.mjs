@@ -89,13 +89,13 @@ for (const o of ngc) {
   const m = o.M ? "M" + (+o.M) : (o.Name === "NGC5866" ? "M102" : "");
   const id = o.Name.replace(/^(NGC|IC|Mel|Cr|B|C|Sh2-|LBN|LDN|Abell|UGC|PGC)0*(\d)/, "$1 $2");
   const common = o["Common names"]?.split(",")[0]?.trim() || "";
-  const rec = [m || id, r(hms(o.RA)), r(dms(o.Dec), 3), isFinite(vmag) ? r(vmag, 1) : null, o.Type, o.MajAx ? +o.MajAx : null, o.MinAx ? +o.MinAx : null, common, o.Const || "", m ? id : ""];
+  const rec = [m || id, r(hms(o.RA)), r(dms(o.Dec), 3), isFinite(vmag) ? r(vmag, 1) : null, o.Type, o.MajAx ? +o.MajAx : null, o.MinAx ? +o.MinAx : null, common, o.Const || "", m ? id : "", o.PosAng ? +o.PosAng : null];
   if (m === "M45" && !isFinite(vmag)) rec[3] = 1.6; if (m === "M40" ) rec[4] = "**"; if (m === "M73") rec[4] = "Ast";
   if (seen.has(rec[0])) continue; seen.add(rec[0]);
   dsoFull.push(rec);
   if (m || common || (isFinite(vmag) && vmag <= 11)) dso.push(rec);
 }
-const dfields = ["id", "ra", "dec", "mag", "type", "majAx", "minAx", "name", "con", "alt"];
+const dfields = ["id", "ra", "dec", "mag", "type", "majAx", "minAx", "name", "con", "alt", "pa"];
 emit("dso.json", { fields: dfields, types: TYPE, rows: dso });
 emit("dso-full.json", { fields: dfields, types: TYPE, rows: dsoFull });
 console.log(`dso: ${dso.length} bright/named, ${dsoFull.length} total; messier: ${dso.filter(d => d[0].startsWith("M")).length}`);

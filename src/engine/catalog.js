@@ -40,7 +40,7 @@ export class Catalog {
     return set;
   }
   _dsoSet(json, epochMs) {
-    const rows = json.rows.map(r => ({ id: r[0], ra: r[1], dec: r[2], mag: r[3], type: r[4], typeName: json.types[r[4]] ?? r[4], majAx: r[5], minAx: r[6], name: r[7], con: r[8], alt: r[9] }));
+    const rows = json.rows.map(r => ({ id: r[0], ra: r[1], dec: r[2], mag: r[3], type: r[4], typeName: json.types[r[4]] ?? r[4], majAx: r[5], minAx: r[6], name: r[7], con: r[8], alt: r[9], pa: r[10] ?? null }));
     const n = rows.length;
     const set = { kind: "dso", rows, n, ra: Float32Array.from(rows, r => r.ra), dec: Float32Array.from(rows, r => r.dec), x: new Float32Array(n), y: new Float32Array(n), z: new Float32Array(n) };
     if (epochMs != null) this._precessSet(set, epochMs);

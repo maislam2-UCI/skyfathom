@@ -130,6 +130,7 @@ function loop() {
   const st = app.state;
   if (app.renderer.resize()) app.dirty = true;
   app.updateEphemeris();
+  if (performance.now() - lastHud > 250) { lastHud = performance.now(); app.mode?.hud?.(app); app.ui.updateCompass?.(); }
   const live = st.time.live || app.modeName === "ar" || st.selection;
   if (!app.dirty && !live) return;
   if (!app.dirty && live && performance.now() - (app._lastFrame || 0) < (app.modeName === "ar" ? 0 : 1000)) return;
@@ -141,7 +142,6 @@ function loop() {
   const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null };
   app.mode?.frame?.(app, scene);
   app.renderer.render(scene);
-  if (performance.now() - lastHud > 250) { lastHud = performance.now(); app.mode?.hud?.(app); }
 }
 window.nightsky = app; // debugging handle
 boot();

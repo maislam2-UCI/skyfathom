@@ -5,6 +5,14 @@ import { forecast, skyScore } from "../weather.js";
 import { lst as lstOf, norm24 } from "../engine/transform.js";
 
 const $ = (s) => document.querySelector(s);
+export function moonSvg(phaseAngle, illum, size = 44) {
+  // northern-hemisphere orientation: waxing lit on the right, waning lit on the left
+  const r = size / 2 - 1, k = Math.max(0, Math.min(1, illum)), waxing = phaseAngle < 180, minor = Math.abs(2 * k - 1) * r;
+  const litSide = waxing ? 1 : -1;
+  const half = `M${size / 2} ${1} A${r} ${r} 0 0 ${waxing ? 1 : 0} ${size / 2} ${size - 1} Z`;
+  return `<svg class="moon" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="#2a2d38"/><path d="${half}" fill="#ece9df"/><ellipse cx="${size / 2}" cy="${size / 2}" rx="${Math.max(0.01, minor)}" ry="${r}" fill="${k >= 0.5 ? "#ece9df" : "#2a2d38"}"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,.25)"/></svg>`;
+  void litSide;
+}
 const h = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 export default {
   name: "planner",
@@ -58,6 +66,7 @@ export default {
         <div><b>Astro dawn</b>${T(tw.astroDawn)}</div><div><b>Nautical dawn</b>${T(tw.nauticalDawn)}</div><div><b>Civil dawn</b>${T(tw.civilDawn)}</div><div><b>Sunrise</b>${T(tw.sunrise)}</div>
       </div>
       <h3>Moon</h3>
+      <div class="moonrow">${moonSvg(moon.phaseAngle, moon.illumination, 52)}<div><b>${moon.name}</b><br><span class="muted">${Math.round(moon.illumination * 100)}% illuminated · ${moon.ageDays.toFixed(1)} days old</span></div></div>
       <div class="grid">
         <div><b>Phase</b>${moon.name} · ${Math.round(moon.illumination * 100)}%</div><div><b>Age</b>${moon.ageDays.toFixed(1)} d</div>
         <div><b>Moonrise</b>${T(moon.rise)}</div><div><b>Moonset</b>${T(moon.set)}</div>

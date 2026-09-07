@@ -3,6 +3,7 @@ import { PRESETS, deviceTimeZone } from "../engine/state.js";
 import * as E from "../engine/ephemeris.js";
 import { WMM } from "../engine/geomag.js";
 import ar from "../modes/ar.js";
+import { moonSvg } from "../modes/planner.js";
 
 const $ = (s) => document.querySelector(s);
 const h = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -21,6 +22,11 @@ export function initPanels(app) {
       const live = st.time.live && st.time.offsetMs === 0;
       $("#chip-time span").textContent = (live ? "" : "⏸ ") + app.fmtTime(app.now, { date: !live });
       const tst = $("#toast"); if (st.ui.toast) { tst.textContent = st.ui.toast; tst.hidden = false; } else tst.hidden = true;
+    },
+    updateCompass() {
+      const c = app.projector.unproject(app.renderer.w / 2, app.renderer.h / 2); if (!Number.isFinite(c.az)) return;
+      const rose = $("#compass-rose"); if (rose) rose.style.transform = `rotate(${-c.az}deg)`;
+      const t = $("#compass-text"); if (t) t.textContent = `${compass(c.az)} ${c.az.toFixed(0)}° · ${c.alt >= 0 ? "+" : ""}${c.alt.toFixed(0)}°`;
     },
     renderInfo(sel) {
       const box = $("#info");
@@ -46,7 +52,7 @@ export function initPanels(app) {
         const il = sel.ref === "Sun" ? null : E.bodyIllumination(sel.ref, t);
         rows = [["Magnitude", b.mag.toFixed(1)], ["Distance", sel.ref === "Moon" ? `${Math.round(b.distAu * 149597870.7).toLocaleString()} km` : `${b.distAu.toFixed(3)} AU (${(b.distAu * 8.317).toFixed(1)} light-min)`]];
         if (il && sel.ref !== "Sun") rows.push(["Illuminated", `${Math.round(il.phaseFraction * 100)}%`]);
-        if (sel.ref === "Moon") { const m = E.moonInfo(obs, t); rows.push(["Phase", `${m.name} · ${m.ageDays.toFixed(1)} d`]); }
+        if (sel.ref === "Moon") { const m = E.moonInfo(obs, t); rows.push(["Phase", `${m.name} · ${m.ageDays.toFixed(1)} d`]); title = `${moonSvg(m.phaseAngle, m.illumination, 28)} Moon`; }
         if (sel.ref !== "Sun" && sel.ref !== "Moon") { const e = E.elongation(sel.ref, t); rows.push(["Elongation", `${e.elongation.toFixed(0)}° (${e.visibility})`]); }
         rows.push(["Angular size", b.diamDeg ? `${(b.diamDeg * 60).toFixed(1)}′` : "—"], ...riseSetRows(sel.ref));
       } else if (sel.kind === "constellation") {
@@ -55,7 +61,7 @@ export function initPanels(app) {
       const c = rd ? E.constellationAt(rd.ra, rd.dec) : null;
       const below = aa.alt < 0;
       box.innerHTML = `<button class="close" id="info-close">✕</button>
-        <div class="title">${h(title)}</div><div class="sub">${h(sub)}${c && sel.kind !== "constellation" && sel.kind !== "star" && sel.kind !== "dso" ? " · in " + h(c.name) : ""}</div>
+        <div class="title">${sel.kind === "body" && sel.ref === "Moon" ? title : h(title)}</div><div class="sub">${h(sub)}${c && sel.kind !== "constellation" && sel.kind !== "star" && sel.kind !== "dso" ? " · in " + h(c.name) : ""}</div>
         <div class="grid">
           <div><b>Altitude / azimuth</b>${aa.alt.toFixed(1)}° ${below ? '<span class="tag bad">below horizon</span>' : ""} / ${aa.az.toFixed(1)}° ${compass(aa.az)}</div>
           ${rd ? `<div><b>RA / Dec (of date)</b>${fmtRa(rd.ra)} / ${fmtDec(rd.dec)}</div>` : ""}
