@@ -36,9 +36,5 @@ Options, pick one when Phase 3 starts: (a) `mkcert` self-signed cert + HTTPS in
 serve.mjs; (b) Cloudflare/ngrok tunnel; (c) Chrome flag
 `chrome://flags/#unsafely-treat-insecure-origin-as-secure` for the LAN URL.
 
-## Open questions for the operator
-1. Priority: sky identification (Stellarium-style) vs photography planning
-   (PhotoPills-style) for v1?
-2. Phone model + camera/lens/telescope gear to preload as framing profiles?
-3. Observing location(s) to default to (Irvine, CA?) for the planner.
-4. Is a paid seeing/transparency feed acceptable later, or free-only?
+## Operator decisions
+Answered 2026-09-06 — see DECISIONS.md. Summary: sky identification first; iPhone 17 Pro Max primary + Android; Irvine CA default, must work across USA and Bangladesh; free data only.

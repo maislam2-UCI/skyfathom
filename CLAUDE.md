@@ -2,7 +2,7 @@
 
 > Read fully at session start. Single source of truth for this project.
 > Operator: Md Aminul Islam. Repo: `C:\dev\nightsky`. Target: **Android phone (Chrome)**
-> first, as an installable PWA; native wrap (Capacitor) later if warranted.
+> — installable PWA; must work anywhere in the USA and Bangladesh. See docs/DECISIONS.md.
 
 ## 1. What this is
 An interactive night-sky map + astrophotography planner that runs on the operator's
