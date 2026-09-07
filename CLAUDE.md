@@ -1,9 +1,9 @@
 # CLAUDE.md — Skyfathom · Project Brief
 
-> Product name **Skyfathom** (renamed from NightSky on 2026-09-07: that name belongs to iCandi Apps). Folder is still `C:\dev\nightsky`; GitHub repo `maislam2-UCI/skyfathom`, live at https://maislam2-uci.github.io/skyfathom/.
+> Product name **Skyfathom** (renamed from NightSky on 2026-09-07: that name belongs to iCandi Apps). Folder is still `C:\dev\skyfathom`; GitHub repo `maislam2-UCI/skyfathom`, live at https://maislam2-uci.github.io/skyfathom/.
 
 > Read fully at session start. Single source of truth for this project.
-> Operator: Md Aminul Islam. Repo: `C:\dev\nightsky`. Target: **iPhone 17 Pro Max (Safari PWA) first, Android Chrome second**
+> Operator: Md Aminul Islam. Repo: `C:\dev\skyfathom`. Target: **iPhone 17 Pro Max (Safari PWA) first, Android Chrome second**
 > — installable PWA; must work anywhere in the USA and Bangladesh. See docs/DECISIONS.md.
 
 ## 1. What this is
@@ -16,7 +16,7 @@ Uses phone GPS, orientation sensors (IMU/compass) and rear camera.
 ## 2. Hard constraints
 - **Total isolation.** This repo only. It is unrelated to `C:\dev\wallst-engine`,
   `health-os`, or any other project on this machine. No shared code, env, venv,
-  secrets, or data. Never read or write outside `C:\dev\nightsky`.
+  secrets, or data. Never read or write outside `C:\dev\skyfathom`.
 - **No global installs.** Node ≥ 20 is already present; keep dependencies at zero
   where possible, otherwise `node_modules/` only. No Python needed.
 - **Offline-first.** Astronomy math and catalogs ship inside the app. The only
