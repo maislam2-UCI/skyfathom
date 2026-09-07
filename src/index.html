@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#05070f">
+  <title>NightSky</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="ui/app.css">
+</head>
+<body>
+  <canvas id="sky"></canvas>
+  <video id="cam" autoplay muted playsinline hidden></video>
+  <nav id="modes">
+    <button data-mode="planetarium" class="active">Map</button>
+    <button data-mode="ar">AR</button>
+    <button data-mode="planner">Plan</button>
+    <button data-mode="framing">Frame</button>
+  </nav>
+  <div id="hud"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

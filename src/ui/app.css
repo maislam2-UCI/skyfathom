@@ -1,0 +1,10 @@
+:root { --bg:#05070f; --fg:#dfe6f5; --accent:#6fa8ff; --red:#c0392b; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px system-ui,sans-serif; overflow:hidden; touch-action:none; }
+#sky { position:fixed; inset:0; width:100%; height:100%; }
+#cam { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:-1; }
+#modes { position:fixed; bottom:0; left:0; right:0; display:flex; padding-bottom:env(safe-area-inset-bottom); background:rgba(5,7,15,.85); }
+#modes button { flex:1; padding:14px 0; background:none; border:0; color:var(--fg); font-size:15px; }
+#modes button.active { color:var(--accent); border-top:2px solid var(--accent); }
+#hud { position:fixed; top:env(safe-area-inset-top); left:0; right:0; padding:8px 12px; opacity:.8; pointer-events:none; }
+/* night-vision mode: red-only palette */
+body.night { --fg:#ff4a4a; --accent:#ff2a2a; }

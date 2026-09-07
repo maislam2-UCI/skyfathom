@@ -1,0 +1,13 @@
+{
+  "name": "nightsky",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Interactive night-sky map + astrophotography planner PWA for Android (Stellarium / PhotoPills / Telescopius / Astrospheric in one)",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/serve.mjs",
+    "test": "node --test tests/",
+    "catalog": "node tools/build-catalog.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
