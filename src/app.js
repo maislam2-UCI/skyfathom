@@ -79,10 +79,25 @@ const app = {
     const aa = this.altAzOf(sel); if (!aa) return;
     if (this.modeName === "ar") { this.state.toast(`Turn to ${compass(aa.az)} (az ${aa.az.toFixed(0)}°), ${aa.alt >= 0 ? "up" : "below horizon"} ${Math.abs(aa.alt).toFixed(0)}°`, 3500); return; }
     const fov = sel.kind === "constellation" ? 70 : sel.kind === "dso" ? 25 : sel.kind === "body" ? 40 : Math.min(this.state.view.fov, 45);
-    Object.assign(this.state.view, { az: aa.az, alt: Math.max(-10, aa.alt), fov });
+    this.animateView({ az: aa.az, alt: Math.max(-10, aa.alt), fov }, 650);
     if (aa.alt < 0) this.state.toast("Below the horizon right now — use Tonight to see when it rises.", 3000);
-    this.dirty = true;
   },
+  /** Smoothly fly the view to a target (shortest way round in azimuth). */
+  animateView(target, ms = 600) {
+    const v = this.state.view, from = { az: v.az, alt: v.alt, fov: v.fov };
+    let dAz = ((target.az - from.az + 540) % 360) - 180;
+    const t0 = performance.now(), ease = (x) => 1 - Math.pow(1 - x, 3);
+    cancelAnimationFrame(this._anim);
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / ms), e = ease(k);
+      v.az = ((from.az + dAz * e) % 360 + 360) % 360; v.alt = from.alt + (target.alt - from.alt) * e;
+      v.fov = from.fov * Math.pow(target.fov / from.fov, e);
+      this.dirty = true;
+      if (k < 1) this._anim = requestAnimationFrame(step); else this.state.save();
+    };
+    step();
+  },
+  ripple(x, y) { this._ripple = { x, y, t0: performance.now() }; this.dirty = true; },
   setMode(name) {
     if (this.modeName === name) return;
     this.mode?.exit?.(this); this.modeName = name; this.mode = MODES[name]; this.state.mode = name;
@@ -154,9 +169,10 @@ function loop() {
   P.setSize(app.renderer.w, app.renderer.h);
   P.setSky(app.lstH, st.observer.lat);
   P.setView(st.view);
-  const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null };
+  const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0 };
   app.mode?.frame?.(app, scene);
   app.renderer.render(scene);
+  if (!scene.ripple) app._ripple = null; else app.dirty = true;
 }
 window.nightsky = app; // debugging handle
 boot();

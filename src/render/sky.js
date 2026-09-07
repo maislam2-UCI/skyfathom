@@ -50,6 +50,7 @@ export class SkyRenderer {
     if (sc.fovBox) this._fovBox(sc);
     if (sc.selection) this._selection(sc);
     if (sc.crosshair) this._crosshair(sc);
+    if (sc.ripple) this._ripple(sc);
     if (S.nightMode) { ctx.globalCompositeOperation = "multiply"; ctx.fillStyle = "#ff2a1a"; ctx.fillRect(0, 0, this.w, this.h); ctx.globalCompositeOperation = "source-over"; }
   }
 
@@ -115,9 +116,14 @@ export class SkyRenderer {
         const { ra, dec } = galacticToEquatorial(l, b);
         this._mw.push({ v: mulMatVec(M, eqVec(ra, dec)), half, bright });
       }
+      // the Great Rift: dark dust lanes north of the equator from Cygnus down to Sagittarius (l ≈ 80 → 0)
+      this._rift = [];
+      for (let l = -2; l <= 82; l += 3) { const b = 1.5 + 2.2 * Math.sin(l * D2R * 1.1) + (l < 30 ? 1 : 0); const { ra, dec } = galacticToEquatorial(l, b); this._rift.push({ v: mulMatVec(M, eqVec(ra, dec)), half: 2.6 + 1.2 * Math.max(0, Math.cos((l - 40) * D2R)) }); }
+      const gc = galacticToEquatorial(0, 0); this._gc = mulMatVec(M, eqVec(gc.ra, gc.dec));
+      this._equator = []; for (let l = 0; l <= 360; l += 4) { const q = galacticToEquatorial(l, 0); this._equator.push(mulMatVec(M, eqVec(q.ra, q.dec))); }
     }
     const vis = this.vis; if (vis <= 0) return;
-    const out = [0, 0, 0];
+    const out = [0, 0, 0], ar = sc.transparent, boost = ar ? 4.5 : 1;
     ctx.globalCompositeOperation = "lighter";
     for (const p of this._mw) {
       if (!sc.settings.belowHorizon && P.eqToHor(p.v[0], p.v[1], p.v[2])[2] < -0.12) continue;
@@ -125,11 +131,37 @@ export class SkyRenderer {
       const R = Math.min(this.w * 1.6, p.half * this.pxDeg * 1.5);
       if (out[0] < -R || out[0] > this.w + R || out[1] < -R || out[1] > this.h + R) continue;
       const g = ctx.createRadialGradient(out[0], out[1], 0, out[0], out[1], R);
-      const a = p.bright * vis;
+      const a = Math.min(0.5, p.bright * vis * boost);
       g.addColorStop(0, `rgba(205,215,245,${a})`); g.addColorStop(0.5, `rgba(190,200,240,${a * 0.55})`); g.addColorStop(1, "rgba(180,190,230,0)");
       ctx.fillStyle = g; ctx.fillRect(out[0] - R, out[1] - R, 2 * R, 2 * R);
     }
     ctx.globalCompositeOperation = "source-over";
+    if (!ar) for (const p of this._rift) { // dust lanes: soft dark blobs
+      if (!sc.settings.belowHorizon && P.eqToHor(p.v[0], p.v[1], p.v[2])[2] < -0.05) continue;
+      P.projectEq(p.v[0], p.v[1], p.v[2], out); if (!out[2]) continue;
+      const R = Math.min(this.w, p.half * this.pxDeg * 1.6);
+      if (out[0] < -R || out[0] > this.w + R || out[1] < -R || out[1] > this.h + R) continue;
+      const g = ctx.createRadialGradient(out[0], out[1], 0, out[0], out[1], R);
+      g.addColorStop(0, `rgba(4,6,14,${0.32 * vis})`); g.addColorStop(0.6, `rgba(4,6,14,${0.12 * vis})`); g.addColorStop(1, "rgba(4,6,14,0)");
+      ctx.fillStyle = g; ctx.fillRect(out[0] - R, out[1] - R, 2 * R, 2 * R);
+    }
+    if (ar) { // over a live camera the faint band needs an explicit path
+      this._polyline(this._equator.map(v => P.projectEq(v[0], v[1], v[2])), "rgba(200,215,255,0.35)", 1.2, [10, 8]);
+    }
+    // galactic core marker
+    const gc = this._gc;
+    if (sc.settings.belowHorizon || P.eqToHor(gc[0], gc[1], gc[2])[2] > -0.02) {
+      P.projectEq(gc[0], gc[1], gc[2], out);
+      if (out[2] && out[0] > -40 && out[0] < this.w + 40 && out[1] > -40 && out[1] < this.h + 40) {
+        const t = performance.now() / 1000, r = 7 + Math.sin(t * 2) * 1.5;
+        const g = ctx.createRadialGradient(out[0], out[1], 0, out[0], out[1], r * 4); g.addColorStop(0, `rgba(255,220,170,${0.35 * vis})`); g.addColorStop(1, "rgba(255,220,170,0)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(out[0], out[1], r * 4, 0, TAU); ctx.fill();
+        ctx.strokeStyle = `rgba(255,225,180,${0.9 * vis})`; ctx.lineWidth = 1.3; ctx.save(); ctx.translate(out[0], out[1]); ctx.rotate(Math.PI / 4);
+        ctx.beginPath(); ctx.rect(-r, -r, 2 * r, 2 * r); ctx.stroke(); ctx.restore();
+        this.labels.push({ x: out[0] + r + 6, y: out[1] - r, text: "Milky Way core", color: `rgba(255,228,190,${0.9 * vis})`, font: "600 11px system-ui", prio: -5 });
+        this.hits.push({ x: out[0], y: out[1], r: 12, kind: "gc", prio: -5 });
+      }
+    }
   }
 
   _polyline(points, style, width, dash) {
@@ -189,7 +221,7 @@ export class SkyRenderer {
         ctx.moveTo(a[0] + dx / L * gap, a[1] + dy / L * gap); ctx.lineTo(b[0] - dx / L * gap, b[1] - dy / L * gap);
       }
       if (hl) { ctx.strokeStyle = "rgba(140,200,255,0.35)"; ctx.lineWidth = 5; ctx.stroke(); }
-      ctx.strokeStyle = hl ? "rgba(170,215,255,0.95)" : `rgba(120,160,225,${0.42 * vis})`; ctx.lineWidth = hl ? 1.6 : 1; ctx.stroke();
+      ctx.strokeStyle = hl ? "rgba(170,215,255,0.95)" : `rgba(130,170,235,${(sc.transparent ? 0.8 : 0.42) * vis})`; ctx.lineWidth = hl ? 1.6 : (sc.transparent ? 1.4 : 1); ctx.stroke();
     }
   }
   _constellationLabels(sc) {
@@ -225,13 +257,19 @@ export class SkyRenderer {
       for (let i = 0; i < s.n; i++) {
         const m = s.mag[i]; if (m > lim) break;
         const x = s.x[i], y = s.y[i], z = s.z[i];
-        if (!S.belowHorizon && e[6] * x + e[7] * y + e[8] * z < -0.01) continue;
+        const sinAlt = e[6] * x + e[7] * y + e[8] * z;
+        if (!S.belowHorizon && sinAlt < -0.01) continue;
         P.projectEq(x, y, z, out); if (!out[2]) continue;
         const sx = out[0], sy = out[1];
         if (sx < -10 || sx > this.w + 10 || sy < -10 || sy > this.h + 10) continue;
-        const r = (lim - m) * 0.36 * zoom;
-        const [cr, cg, cb] = starColor(s.ci[i]);
-        const alpha = Math.min(1, 0.3 + (lim - m) * 0.22) * (0.35 + 0.65 * vis);
+        // atmospheric extinction: stars fade and redden in the last ~12° above the horizon
+        const ext = sinAlt < 0.21 ? Math.max(0.25, 0.25 + 0.75 * Math.max(0, sinAlt) / 0.21) : 1;
+        let r = (lim - m) * 0.36 * zoom * (0.6 + 0.4 * ext);
+        if (sc.transparent) r = Math.max(r, 1.3);
+        let [cr, cg, cb] = starColor(s.ci[i]);
+        if (ext < 1) { cg = Math.round(cg * (0.7 + 0.3 * ext)); cb = Math.round(cb * (0.5 + 0.5 * ext)); }
+        let alpha = Math.min(1, 0.3 + (lim - m) * 0.22) * (0.35 + 0.65 * vis) * ext;
+        if (sc.twinkle && r > 1.2) alpha *= 0.82 + 0.18 * Math.sin(sc.twinkle * (2 + (i % 7)) + i);
         if (r < 0.9) { ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha * Math.max(0.35, r)})`; ctx.fillRect(sx - 0.75, sy - 0.75, 1.5, 1.5); }
         else {
           ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
@@ -458,6 +496,11 @@ export class SkyRenderer {
     ctx.stroke(); ctx.restore();
     ctx.strokeStyle = "rgba(125,255,180,0.35)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(pos[0], pos[1], R + 8 + 3 * Math.sin(t * 3 + 1), 0, TAU); ctx.stroke();
     sc.selectionScreen = [pos[0], pos[1]];
+  }
+  _ripple(sc) {
+    const { ctx } = this, age = (performance.now() - sc.ripple.t0) / 550; if (age > 1) { sc.ripple = null; return; }
+    ctx.strokeStyle = `rgba(160,200,255,${0.7 * (1 - age)})`; ctx.lineWidth = 2 * (1 - age) + 0.5;
+    ctx.beginPath(); ctx.arc(sc.ripple.x, sc.ripple.y, 6 + 34 * age, 0, TAU); ctx.stroke();
   }
   _crosshair() {
     const { ctx } = this, cx = this.w / 2, cy = this.h / 2;

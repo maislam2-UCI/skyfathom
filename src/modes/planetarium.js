@@ -18,7 +18,7 @@ export default {
   },
   _bind(app) {
     const c = app.canvas, st = app.state, ptrs = new Map();
-    let dragStart = null, lastTap = 0, moved = false, pinch0 = null;
+    let dragStart = null, lastTap = 0, moved = false, pinch0 = null, vel = { az: 0, alt: 0, t: 0 }, last = null;
     const onDown = (e) => { c.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); moved = false;
       if (ptrs.size === 1) dragStart = { x: e.clientX, y: e.clientY, az: st.view.az, alt: st.view.alt };
       if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), fov: st.view.fov }; dragStart = null; } };
@@ -30,8 +30,11 @@ export default {
         if (Math.hypot(dx, dy) > 4) moved = true;
         const degPx = st.view.fov / app.renderer.w;
         const altSign = st.view.alt > 0 ? 1 : 1;
+        const nowT = performance.now(), prevAz = st.view.az, prevAlt = st.view.alt;
         st.view.az = ((dragStart.az - dx * degPx * altSign) % 360 + 360) % 360;
         st.view.alt = Math.max(-40, Math.min(89.5, dragStart.alt + dy * degPx));
+        if (last) { const dt = Math.max(8, nowT - last); vel = { az: (((st.view.az - prevAz + 540) % 360) - 180) / dt, alt: (st.view.alt - prevAlt) / dt, t: nowT }; }
+        last = nowT; cancelAnimationFrame(app._anim);
         app.requestRender();
       }
     };
@@ -44,7 +47,16 @@ export default {
         if (now - lastTap < 320) { const u = app.projector.unproject(x, y); Object.assign(st.view, { az: u.az, alt: Math.max(-40, u.alt) }); this._zoomTo(app, st.view.fov * 0.6); lastTap = 0; }
         else { lastTap = now; this._tap(app, x, y); }
       }
-      if (ptrs.size === 0) { dragStart = null; st.save(); }
+      if (ptrs.size === 0) { dragStart = null; st.save(); last = null;
+        // inertia: keep gliding and decay
+        if (moved && performance.now() - vel.t < 80 && Math.hypot(vel.az, vel.alt) > 0.02) {
+          let v = { ...vel }, prev = performance.now();
+          const glide = () => { const t = performance.now(), dt = t - prev; prev = t; const k = Math.pow(0.0035, dt / 1000);
+            st.view.az = ((st.view.az + v.az * dt) % 360 + 360) % 360; st.view.alt = Math.max(-40, Math.min(89.5, st.view.alt + v.alt * dt)); v.az *= k; v.alt *= k; app.requestRender();
+            if (Math.hypot(v.az, v.alt) > 0.004) app._anim = requestAnimationFrame(glide); else st.save(); };
+          app._anim = requestAnimationFrame(glide);
+        }
+      }
       else if (ptrs.size === 1) { const [p] = [...ptrs.values()]; dragStart = { x: p[0], y: p[1], az: st.view.az, alt: st.view.alt }; }
     };
     const onWheel = (e) => { e.preventDefault(); this._zoomTo(app, st.view.fov * (e.deltaY > 0 ? 1.12 : 0.89)); };
@@ -62,7 +74,9 @@ export default {
     app.requestRender();
   },
   _tap(app, x, y) {
+    app.ripple(x, y);
     const hit = app.renderer.pick(x, y, 24);
+    if (hit?.kind === "gc") { app.state.toast("Milky Way core — the galactic centre in Sagittarius. Best photographed when it is high in a moonless sky (see Tonight).", 4500); return; }
     if (hit) { app.select(hit.kind === "body" ? { kind: "body", ref: hit.ref } : { kind: hit.kind, set: hit.set, index: hit.index }); return; }
     // fall back to a catalog search around the tapped direction (faint stars, small DSOs)
     const u = app.projector.unproject(x, y), radius = Math.max(0.3, 24 / app.projector.pxPerDeg);

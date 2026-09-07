@@ -50,7 +50,7 @@ export default {
     this.imu?.stop(); this.imu = null; this.sensorsOn = false;
     if (this.cameraOn) stopCamera(app.video); this.cameraOn = false;
   },
-  frame(app, sc) { sc.transparent = this.cameraOn; sc.crosshair = true; sc.fovBox = null; if (this.imu) { this.imu.applyDeclination = app.state.settings.applyDeclination; this.imu.declination = app.declination; } app.state.view.fov = app.state.settings.cameraFov; },
+  frame(app, sc) { sc.transparent = this.cameraOn; sc.crosshair = true; sc.fovBox = null; sc.twinkle = this.sensorsOn ? performance.now() / 1000 : 0; if (this.imu) { this.imu.applyDeclination = app.state.settings.applyDeclination; this.imu.declination = app.declination; } app.state.view.fov = app.state.settings.cameraFov; },
   hud(app) {
     const st = app.state, p = this.lastPose;
     if (!this.sensorsOn) { app.hud(""); return; }
