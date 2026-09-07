@@ -1,7 +1,7 @@
 # CLAUDE.md — NightSky · Project Brief
 
 > Read fully at session start. Single source of truth for this project.
-> Operator: Md Aminul Islam. Repo: `C:\dev\nightsky`. Target: **Android phone (Chrome)**
+> Operator: Md Aminul Islam. Repo: `C:\dev\nightsky`. Target: **iPhone 17 Pro Max (Safari PWA) first, Android Chrome second**
 > — installable PWA; must work anywhere in the USA and Bangladesh. See docs/DECISIONS.md.
 
 ## 1. What this is
