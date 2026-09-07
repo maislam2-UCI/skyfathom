@@ -1,6 +1,6 @@
 # CLAUDE.md — Skyfathom · Project Brief
 
-> Product name **Skyfathom** (renamed from NightSky on 2026-09-07: that name belongs to iCandi Apps). Folder is still `C:\dev\skyfathom`; GitHub repo `maislam2-UCI/skyfathom`, live at https://maislam2-uci.github.io/skyfathom/.
+> Product name **Skyfathom** (renamed from NightSky on 2026-09-07: that name belongs to iCandi Apps). Folder `C:\dev\skyfathom` (renamed from nightsky on 2026-09-07); GitHub repo `maislam2-UCI/skyfathom`, live at https://maislam2-uci.github.io/skyfathom/.
 
 > Read fully at session start. Single source of truth for this project.
 > Operator: Md Aminul Islam. Repo: `C:\dev\skyfathom`. Target: **iPhone 17 Pro Max (Safari PWA) first, Android Chrome second**
