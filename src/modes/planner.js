@@ -4,6 +4,8 @@ import * as E from "../engine/ephemeris.js";
 import { forecast, skyScore } from "../weather.js";
 import { lst as lstOf, norm24 } from "../engine/transform.js";
 import { activeShowers, upcomingPeaks, bestTimeTonight, limitingMagFromBortle } from "../engine/meteors.js";
+import { conjunctions, isStar } from "../engine/events.js";
+import { buildIcs, deliverIcs } from "../ui/ics.js";
 
 const $ = (s) => document.querySelector(s);
 export function moonSvg(phaseAngle, illum, size = 44) {
@@ -23,10 +25,10 @@ export default {
   hud(app) { app.hud(`<b>Tonight</b> · ${app.state.observer.name} · ${app.fmtDate(app.now)}`); },
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
-  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["moon", "Moon calendar"], ["meteors", "Meteor showers"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
+  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
   bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { this.view = b.dataset.view; this.render(app); }); },
   render(app) {
-    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
+    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
   },
   _render(app) {
     const st = app.state, obs = app.obs, t = app.now, panel = $("#panel");
@@ -135,11 +137,29 @@ export default {
     try {
       const passes = await app.sats.passes(start, end, 10);
       const iss = passes.filter(p => app.sats.isHighlight(p.i)), bright = passes.filter(p => !app.sats.isHighlight(p.i) && p.bestMag <= 4.0).slice(0, 12), starlink = passes.filter(p => p.group === "starlink" && p.bestMag <= 5).slice(0, 8);
-      const row = (p) => `<button data-pass="${p.i}" data-t="${p.visMaxT ?? p.maxT}"><span><b>${h(app.sats.prettyName(p.i).split(" ·")[0])}</b> <small>${p.group}</small><br><small>${app.fmtTime(p.visibleFrom ?? p.rise)} → ${app.fmtTime(p.visibleTo ?? p.set)} · highest ${(p.visMaxEl ?? p.maxEl).toFixed(0)}° ${compass(p.visMaxAz ?? p.maxAz)} at ${app.fmtTime(p.visMaxT ?? p.maxT)} · ${compass(p.riseAz)} → ${compass(p.setAz)} · mag ${p.bestMag.toFixed(1)}</small></span><small>Show</small></button>`;
+      const row = (p) => `<button data-pass="${p.i}" data-t="${p.visMaxT ?? p.maxT}" data-idx="${passes.indexOf(p)}"><span><b>${h(app.sats.prettyName(p.i).split(" ·")[0])}</b> <small>${p.group}</small><br><small>${app.fmtTime(p.visibleFrom ?? p.rise)} → ${app.fmtTime(p.visibleTo ?? p.set)} · highest ${(p.visMaxEl ?? p.maxEl).toFixed(0)}° ${compass(p.visMaxAz ?? p.maxAz)} at ${app.fmtTime(p.visMaxT ?? p.maxT)} · ${compass(p.riseAz)} → ${compass(p.setAz)} · mag ${p.bestMag.toFixed(1)}</small></span><small>Show</small></button>`;
       const list = [...iss, ...bright.filter(p => !iss.includes(p))];
-      el.innerHTML = (list.length ? `<div class="list">${list.map(row).join("")}</div>` : "<p class='muted'>No bright satellite pass tonight (ISS, Tiangong, Hubble and the 150 brightest objects checked).</p>") +
+      const S = app.state.settings, notif = typeof Notification !== "undefined", perm = notif ? Notification.permission : "unsupported";
+      const nextIss = iss[0];
+      const alertCard = `<div class="ds-card" id="iss-alerts"><div class="title">ISS &amp; station alerts</div>
+        <div class="muted">${nextIss ? `Next visible ISS/Tiangong/Hubble pass: <b>${app.fmtTime(nextIss.visibleFrom ?? nextIss.rise, { date: true })}</b>, highest ${(nextIss.visMaxEl ?? nextIss.maxEl).toFixed(0)}° ${compass(nextIss.visMaxAz ?? nextIss.maxAz)}.` : "No visible station pass in this window."}</div>
+        <div class="row" style="align-items:center">
+          <label class="toggle" style="border:0;padding:0;gap:8px"><span>Notify me before a pass</span><input type="checkbox" id="al-on" ${S.issAlerts ? "checked" : ""} ${notif ? "" : "disabled"}></label>
+          <select id="al-lead">${[5, 10, 15, 20, 30].map(m => `<option value="${m}" ${(S.alertLeadMin ?? 15) === m ? "selected" : ""}>${m} min before</option>`).join("")}</select>
+          ${nextIss ? `<button class="btn small" id="al-cal">📅 Add next pass to calendar</button>` : ""}
+          ${iss.length > 1 ? `<button class="btn small" id="al-cal-all">📅 All ${iss.length} station passes</button>` : ""}
+        </div>
+        <div class="muted" style="margin-top:6px">${!notif ? "This browser cannot show notifications; use the calendar buttons instead." : perm === "denied" ? "Notifications are blocked for this site — allow them in the phone settings, or use the calendar buttons." : "In-app notifications fire while Skyfathom is open (Android also for a while in the background). For a reminder that always arrives, add the pass to your calendar — it includes a ${S.alertLeadMin ?? 15}-minute alarm."}</div></div>`;
+      el.innerHTML = alertCard + (list.length ? `<div class="list">${list.map(row).join("")}</div>` : "<p class='muted'>No bright satellite pass tonight (ISS, Tiangong, Hubble and the 150 brightest objects checked).</p>") +
         (starlink.length ? `<h3>Starlink trains</h3><div class="list">${starlink.map(row).join("")}</div>` : "") +
         `<p class="muted">Orbital elements from CelesTrak, snapshot ${app.sats.fetched ? app.sats.fetched.slice(0, 10) : ""}; times good to about a minute for the next few days.</p>`;
+      const passEvent = (p) => ({ title: `${app.sats.prettyName(p.i).split(" ·")[0]} pass — up to ${(p.visMaxEl ?? p.maxEl).toFixed(0)}° ${compass(p.visMaxAz ?? p.maxAz)}`, start: p.visibleFrom ?? p.rise, end: (p.visibleTo ?? p.set) + 60000, alarmMin: app.state.settings.alertLeadMin ?? 15, location: app.state.observer.name, uid: `sat${p.i}-${Math.round(p.rise / 60000)}`,
+        description: `Visible ${app.fmtTime(p.visibleFrom ?? p.rise)} → ${app.fmtTime(p.visibleTo ?? p.set)}. Rises ${compass(p.riseAz)}, highest ${(p.visMaxEl ?? p.maxEl).toFixed(0)}° ${compass(p.visMaxAz ?? p.maxAz)} at ${app.fmtTime(p.visMaxT ?? p.maxT)}, sets ${compass(p.setAz)}. Brightness mag ${p.bestMag.toFixed(1)}. Predicted by Skyfathom.`, url: "https://maislam2-uci.github.io/skyfathom/" });
+      const deliver = async (evs, name) => { const r = await deliverIcs(buildIcs(evs, "Skyfathom passes"), name); if (r === "downloaded") app.state.toast("Calendar file saved — open it to add the event.", 4000); else if (r === "shared") app.state.toast("Pick Calendar in the share sheet to add it.", 3500); };
+      $("#al-on")?.addEventListener("change", async (e) => { app.state.settings.issAlerts = e.target.checked; app.state.save(); if (e.target.checked) { const p = await app.alerts.enable(); if (p !== "granted") { app.state.settings.issAlerts = false; app.state.save(); e.target.checked = false; app.state.toast(p === "denied" ? "Notifications were denied. Use the calendar buttons instead." : "Notifications are not available here.", 4000); } else app.state.toast("Alerts on — you will be notified " + (app.state.settings.alertLeadMin ?? 15) + " min before the next visible pass while the app is open.", 4500); } else app.alerts.disable(); });
+      $("#al-lead")?.addEventListener("change", (e) => { app.state.settings.alertLeadMin = +e.target.value; app.state.save(); app.alerts.reschedule(); });
+      $("#al-cal")?.addEventListener("click", () => deliver([passEvent(nextIss)], "iss-pass.ics"));
+      $("#al-cal-all")?.addEventListener("click", () => deliver(iss.map(passEvent), "station-passes.ics"));
       el.querySelectorAll("[data-pass]").forEach(b => b.onclick = () => {
         const t = +b.dataset.t, i = +b.dataset.pass;
         app.state.time = { live: true, offsetMs: t - Date.now(), epoch: t }; app.updateEphemeris(true); app.state.emit();
@@ -149,6 +169,35 @@ export default {
         app.state.toast("Time set to the pass — tap the time chip and “Live now” to come back.", 4000);
       });
     } catch (e) { el.innerHTML = `<p class="muted">Pass prediction failed: ${h(e.message)}</p>`; }
+  },
+  // ---------------- Conjunctions ----------------
+  _renderConj(app) {
+    const st = app.state, panel = $("#panel"), obs = app.obs, t = app.now;
+    panel.innerHTML = `${this.tabs()}<h2>Conjunctions · ${h(st.observer.name)}</h2><p class="muted">Computing close approaches for the next 12 months…</p>`;
+    setTimeout(() => {
+      const key = `${st.observer.lat.toFixed(2)},${st.observer.lon.toFixed(2)},${Math.floor(t / 86400000)}`;
+      if (this._conjKey !== key) { this._conj = conjunctions(obs, t - 86400000, 12); this._conjKey = key; }
+      const evs = this._conj;
+      const nice = (n) => n === "Pleiades" ? "the Pleiades" : n === "Beehive" ? "the Beehive cluster (M44)" : n;
+      const when = (e) => e.evening && e.morning ? `evening (${e.evening.alt.toFixed(0)}° up after sunset) and morning` : e.evening ? `evening sky, ${e.evening.alt.toFixed(0)}° up an hour after sunset` : e.morning ? `morning sky, ${e.morning.alt.toFixed(0)}° up an hour before sunrise` : "too close to the Sun to see easily";
+      const cls = (e) => e.occultation ? "bad" : e.sep < 1 ? "good" : "";
+      const row = (e, i) => `<button data-conj="${i}"><span><b>${nice(e.a)} ${e.occultation ? "occults" : "&amp;"} ${nice(e.b)}</b> <span class="tag ${cls(e)}">${e.occultation ? "occultation" : e.sep.toFixed(1) + "° apart"}</span><br><small>${app.fmtTime(e.t, { date: true, weekday: true })} · ${when(e)} · ${e.elong.toFixed(0)}° from the Sun</small></span><small>Show</small></button>`;
+      const soon = evs.filter(e => e.t >= t - 86400000 && e.t < t + 45 * 86400000), later = evs.filter(e => e.t >= t + 45 * 86400000);
+      panel.innerHTML = `${this.tabs()}<h2>Conjunctions · ${h(st.observer.name)}</h2>
+        <p class="muted">Moon, Mercury, Venus, Mars, Jupiter and Saturn passing each other or the bright stars Regulus, Spica, Antares, Aldebaran, Pollux, Elnath, the Pleiades and the Beehive. Separation is the closest approach; events within 8° of the Sun are dropped.</p>
+        <h3>Next 6 weeks</h3><div class="list">${soon.map((e) => row(e, evs.indexOf(e))).join("") || "<p class='muted'>Nothing close in the next six weeks.</p>"}</div>
+        <h3>Rest of the year</h3><div class="list">${later.map((e) => row(e, evs.indexOf(e))).join("")}</div>
+        <div id="conj-detail"></div>`;
+      panel.querySelectorAll("[data-conj]").forEach(b => b.onclick = () => {
+        const e = evs[+b.dataset.conj];
+        const showAt = e.evening?.t ?? e.morning?.t ?? e.t;
+        $("#conj-detail").innerHTML = `<div class="ds-card"><div class="title">${nice(e.a)} ${e.occultation ? "occults" : "meets"} ${nice(e.b)}</div><div class="muted">Closest ${app.fmtTime(e.t, { date: true })} · ${e.sep.toFixed(2)}° · ${when(e)}</div>
+          <div class="row"><button class="btn primary" id="conj-show">Show in the sky at ${app.fmtTime(showAt)}</button><button class="btn" id="conj-cal">📅 Add to calendar</button></div></div>`;
+        $("#conj-show").onclick = () => { st.time = { live: false, offsetMs: 0, epoch: showAt }; app.updateEphemeris(true); st.emit(); app.setMode("planetarium"); setTimeout(() => app.select({ kind: "body", ref: e.a === "Moon" || isStar(e.b) ? e.a : e.a }, { center: true }), 400); st.toast("Clock set to the event — tap the time chip and Live now to return.", 4000); };
+        $("#conj-cal").onclick = async () => { const r = await deliverIcs(buildIcs([{ title: `${nice(e.a)} & ${nice(e.b)} conjunction (${e.sep.toFixed(1)}°)`, start: showAt, end: showAt + 60 * 60000, alarmMin: 60, description: `Closest approach ${app.fmtTime(e.t, { date: true })}, ${e.sep.toFixed(2)}° apart. ${when(e)}. From Skyfathom.`, location: st.observer.name, uid: `conj-${e.a}-${e.b}-${Math.round(e.t / 3600000)}` }], "Skyfathom events"), "conjunction.ics"); if (r === "downloaded") st.toast("Calendar file saved — open it to add the event.", 4000); };
+        $("#conj-detail").scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    }, 30);
   },
   // ---------------- Moon calendar ----------------
   _renderMoon(app) {

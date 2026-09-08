@@ -10,6 +10,7 @@ import { forecast } from "./weather.js";
 import { Satellites } from "./engine/satellites.js";
 import { activeShowers } from "./engine/meteors.js";
 import { LightPollution, describe as describeBortle } from "./engine/darksky.js";
+import { PassAlerts } from "./engine/alerts.js";
 import { eqVec, precessionMatrix, mulMatVec } from "./engine/transform.js";
 import { initPanels } from "./ui/panels.js";
 import { getFix } from "./sensors/gps.js";
@@ -43,7 +44,7 @@ const app = {
     this.lastObsKey = key; this.obs = E.makeObserver(o.lat, o.lon, o.altM || 0);
     this.declination = declination(o.lat, o.lon, this.now); this.lastEphem = 0; this.dirty = true;
     if (this.lp?.grid) this.bortleHere = this.lp.bortle(o.lat, o.lon);
-    if (this.sats.worker) this.sats.setObserver(o.lat, o.lon, o.altM || 0).then(() => this.sats.requestPositions(this.now));
+    if (this.sats.worker) this.sats.setObserver(o.lat, o.lon, o.altM || 0).then(() => { this.sats.requestPositions(this.now); this.alerts?.reschedule(); });
   },
   /** Recompute Sun/Moon/planets (cheap; once per second or on demand). */
   updateEphemeris(force = false) {
@@ -161,7 +162,8 @@ async function boot() {
   setTimeout(() => app.catalog.loadFaint().then(() => (app.dirty = true)), 4000);
   refreshBadges(); setInterval(refreshBadges, 60000);
   setTimeout(() => { app.lp = new LightPollution(); app.lp.load("./data/lightpollution.png").then(() => { app.bortleHere = app.lp.bortle(st.observer.lat, st.observer.lon); refreshBadges(); }).catch(() => {}); }, 6000);
-  app.sats.load("./data/tle.json").then(() => app.sats.setObserver(st.observer.lat, st.observer.lon, st.observer.altM || 0)).then(() => { app.sats.onPositions = (m) => { app.satList = [...m.values()]; app.dirty = true; }; app.sats.requestPositions(app.now); }).catch(e => report("satellites: " + e.message));
+  app.alerts = new PassAlerts(app);
+  app.sats.load("./data/tle.json").then(() => app.sats.setObserver(st.observer.lat, st.observer.lon, st.observer.altM || 0)).then(() => { app.sats.onPositions = (m) => { app.satList = [...m.values()]; app.dirty = true; }; app.sats.requestPositions(app.now); app.alerts.reschedule(); setInterval(() => app.alerts.reschedule(), 60 * 60000); }).catch(e => report("satellites: " + e.message));
   const ua = navigator.userAgent, ios = /iPhone|iPad/.test(ua) && !window.navigator.standalone;
   if (ios && !localStorage.getItem("skyfathom.installHint")) { setTimeout(() => st.toast("Tip: Share → “Add to Home Screen” for full-screen use.", 6000), 3000); localStorage.setItem("skyfathom.installHint", "1"); }
 }
@@ -180,6 +182,7 @@ async function setupUpdates() {
     const w = reg.installing; if (!w) return;
     w.addEventListener("statechange", () => { if (w.state === "installed" && navigator.serviceWorker.controller) offer(); });
   });
+  navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.type === "open-sat" && e.data.sat != null) { app.select({ kind: "sat", index: e.data.sat }, { center: true }); } });
   navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.type === "sw-activated" && navigator.serviceWorker.controller && !app._reloading) offer(); });
   const check = () => reg.update().catch(() => {});
   setInterval(check, 30 * 60000);
