@@ -4,6 +4,7 @@ import * as E from "../engine/ephemeris.js";
 import { WMM } from "../engine/geomag.js";
 import ar from "../modes/ar.js";
 import { moonSvg } from "../modes/planner.js";
+import { APP_VERSION } from "../app.js";
 
 const $ = (s) => document.querySelector(s);
 const h = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -158,7 +159,7 @@ export function initPanels(app) {
         <div class="field"><label>Camera field of view across the screen width <span id="s-fov-v">${S.cameraFov}°</span></label><input id="s-fov" type="range" min="20" max="80" step="1" value="${S.cameraFov}"><span class="muted">iPhone main camera in portrait ≈ 37°; ultra-wide ≈ 70°. Adjust until the Moon or a bright star sits under the real one.</span></div>
         <div class="row"><button class="btn" id="s-reset-align">Reset compass alignment (${st.calibration.dAz.toFixed(1)}° / ${st.calibration.dAlt.toFixed(1)}°)</button></div>
         ${tog("hapticTick", "Haptic tick on selection")}
-        <h3>About</h3><p class="muted">Skyfathom · offline star map, AR finder and astrophotography planner. Data: HYG v4.1 star catalog (CC BY-SA 4.0), Stellarium modern sky culture lines &amp; names (CC BY-SA 4.0) and constellation illustrations by Johan Meuris (Free Art License), Milky Way panorama ESO/S. Brunier (CC BY 4.0), OpenNGC deep-sky catalog (CC BY-SA 4.0), astronomy-engine (MIT), NOAA World Magnetic Model 2025, Open-Meteo forecasts (CC BY 4.0). Location, camera and motion data never leave this device.</p>
+        <h3>About</h3><p class="muted">Skyfathom ${h(APP_VERSION)} · updates install automatically; a “Reload now” toast appears when a new version is ready. Offline star map, AR finder and astrophotography planner. Data: HYG v4.1 star catalog (CC BY-SA 4.0), Stellarium modern sky culture lines &amp; names (CC BY-SA 4.0) and constellation illustrations by Johan Meuris (Free Art License), Milky Way panorama ESO/S. Brunier (CC BY 4.0), OpenNGC deep-sky catalog (CC BY-SA 4.0), astronomy-engine (MIT), NOAA World Magnetic Model 2025, Open-Meteo forecasts (CC BY 4.0). Location, camera and motion data never leave this device.</p>
         <div class="row"><button class="btn" id="s-reload">Check for update</button></div>
         <h3>Diagnostics</h3>
         <pre id="s-diag" class="muted" style="white-space:pre-wrap;font-size:11px;user-select:text;-webkit-user-select:text">${h(diagText(app))}</pre>

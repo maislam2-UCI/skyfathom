@@ -16,6 +16,7 @@ import framing from "./modes/framing.js";
 import darksky from "./modes/darksky.js";
 
 const MODES = { planetarium, ar, planner, framing, darksky };
+export const APP_VERSION = "dev"; // stamped with the commit by the Pages workflow
 const PLANET_ARCSEC_1AU = { Mercury: 6.74, Venus: 16.92, Mars: 9.36, Jupiter: 196.94, Saturn: 165.6, Uranus: 70.5, Neptune: 68.3 };
 const $ = (s) => document.querySelector(s);
 
@@ -144,12 +145,33 @@ async function boot() {
   requestAnimationFrame(loop);
   st.subscribe(() => { app.dirty = true; app.ui.updateChips(); });
   window.addEventListener("resize", () => (app.dirty = true));
-  if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("./sw.js").catch(() => {});
+  if ("serviceWorker" in navigator && location.protocol !== "file:") setupUpdates();
   if (st.observer.source === "gps" || !localStorage.getItem("skyfathom.state.v1")) locateOnce(true);
   setTimeout(() => app.catalog.loadFaint().then(() => (app.dirty = true)), 4000);
   refreshBadges(); setInterval(refreshBadges, 60000);
   const ua = navigator.userAgent, ios = /iPhone|iPad/.test(ua) && !window.navigator.standalone;
   if (ios && !localStorage.getItem("skyfathom.installHint")) { setTimeout(() => st.toast("Tip: Share → “Add to Home Screen” for full-screen use.", 6000), 3000); localStorage.setItem("skyfathom.installHint", "1"); }
+}
+/** Automatic updates: register the service worker, check for a new version every 30 min and whenever the
+ *  app comes back to the foreground, and offer a one-tap reload when one is ready. */
+async function setupUpdates() {
+  let reg;
+  try { reg = await navigator.serviceWorker.register("./sw.js"); } catch { return; }
+  app.swReg = reg;
+  const offer = () => {
+    const t = $("#toast"); t.hidden = false; t.innerHTML = `<b>Update ready</b> — new version of Skyfathom. <button class="btn small" id="toast-reload" style="margin-left:8px">Reload now</button>`;
+    $("#toast-reload").onclick = () => { app._reloading = true; location.reload(); };
+    app.state.ui.toast = null; clearTimeout(app.state._toastT);
+  };
+  reg.addEventListener("updatefound", () => {
+    const w = reg.installing; if (!w) return;
+    w.addEventListener("statechange", () => { if (w.state === "installed" && navigator.serviceWorker.controller) offer(); });
+  });
+  navigator.serviceWorker.addEventListener("message", (e) => { if (e.data?.type === "sw-activated" && navigator.serviceWorker.controller && !app._reloading) offer(); });
+  const check = () => reg.update().catch(() => {});
+  setInterval(check, 30 * 60000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+  setTimeout(check, 5000);
 }
 /** Top-left sky-condition badges: cloud now (Open-Meteo), Moon illumination, hours of astronomical darkness. */
 async function refreshBadges() {
