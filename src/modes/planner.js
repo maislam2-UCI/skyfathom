@@ -26,12 +26,22 @@ export function moonSvg(phaseAngle, illum, size = 44) {
 const h = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 export default {
   name: "planner", view: "tonight", monthOffset: 0,
-  enter(app) { $("#panel").hidden = false; this.render(app); this._t = setInterval(() => { if (app.state.time.live) this._refreshClock(app); }, 30000); },
+  enter(app) { $("#panel").hidden = false; this._bindBarTaps(app); this.render(app); this._t = setInterval(() => { if (app.state.time.live) this._refreshClock(app); }, 30000); },
   exit(app) { $("#panel").hidden = true; clearInterval(this._t); clearInterval(this._earthTimer); this._sysStop?.(); },
   frame(app, sc) { sc.fovBox = null; },
   hud(app) { app.hud(`<b>Tonight</b> · ${app.state.observer.name} · ${app.fmtDate(app.now)}`); },
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
+  _bindBarTaps() {
+    const panel = $("#panel"); if (panel._barTaps) return; panel._barTaps = true;
+    panel.addEventListener("click", (e) => {
+      const bar = e.target.closest(".timeline > div"); if (!bar || !bar.title) return;
+      const strip = bar.parentElement; strip.querySelectorAll("div.sel").forEach(d => d.classList.remove("sel")); bar.classList.add("sel");
+      let info = strip.nextElementSibling?.classList.contains("tl-pick") ? strip.nextElementSibling : null;
+      if (!info) { info = document.createElement("div"); info.className = "tl-pick"; strip.insertAdjacentElement("afterend", info); }
+      info.textContent = bar.title;
+    });
+  },
   tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["eclipses", "Eclipses"], ["comets", "Comets"], ["system", "Solar System"], ["earth", "Earth"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
   bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { clearInterval(this._earthTimer); this._sysStop?.(); this._gen = (this._gen || 0) + 1; this.view = b.dataset.view; this.render(app); }); },
   render(app) {
@@ -302,10 +312,11 @@ export default {
     };
     draw();
     let drag = null;
-    cv.onpointerdown = (e) => { drag = [e.clientX, e.clientY, this._earthView.lat, this._earthView.lon]; cv.setPointerCapture(e.pointerId); };
+    cv.onpointerdown = (e) => { drag = [e.clientX, e.clientY, this._earthView.lat, this._earthView.lon]; try { cv.setPointerCapture(e.pointerId); } catch { /* synthetic or lost pointer */ } };
     cv.onpointermove = (e) => { if (!drag) return; const rct = cv.getBoundingClientRect(); const k = 180 / rct.width; this._earthView.lon = ((drag[3] - (e.clientX - drag[0]) * k + 540) % 360) - 180; this._earthView.lat = Math.max(-85, Math.min(85, drag[2] + (e.clientY - drag[1]) * k)); draw(); };
-    cv.onpointerup = cv.onpointercancel = () => { drag = null; };
-    cv.ondblclick = () => { this._earthView = { lat: o.lat, lon: o.lon }; draw(); };
+    let lastTap = 0;
+    cv.onpointerup = (e) => { const moved = drag && Math.hypot(e.clientX - drag[0], e.clientY - drag[1]) > 8; drag = null; if (moved) return; const now = performance.now(); if (now - lastTap < 350) { this._earthView = { lat: o.lat, lon: o.lon }; draw(); lastTap = 0; } else lastTap = now; };
+    cv.onpointercancel = () => { drag = null; };
     this._earthTimer = setInterval(draw, 60000);
   },
   // ---------------- Aurora ----------------
@@ -475,7 +486,7 @@ export default {
           <div><b>Best window</b>${win ? `${app.fmtTime(win.from)} – ${app.fmtTime(win.to)} (score ${win.peak.score})` : "—"}</div>
           <div><b>Milky Way</b>${sm.some(s => s.milkyWay) ? "visible from " + app.fmtTime(sm.find(s => s.milkyWay).t) : "washed out tonight"}</div>
         </div>
-        <div class="legend">Bar height = sky score; colour = darkness (blue = truly dark, red = bright). Hover/tap a bar for the Moon, twilight and cloud contributions. Model: Bortle → sky brightness, Moon brightness and altitude, Sun altitude, cloud back-scatter.</div>`;
+        <div class="legend">Bar height = sky score; colour = darkness (blue = truly dark, red = bright). Tap a bar for that hour's brightness, Moon, twilight and cloud. Model: Bortle → sky brightness, Moon brightness and altitude, Sun altitude, cloud back-scatter.</div>`;
     } catch (e) { el.innerHTML = `<p class="muted">Sky forecast unavailable (${h(e.message)})</p>`; app.report?.("skyq: " + e.message); }
   },
   async _weather(app, tw) {

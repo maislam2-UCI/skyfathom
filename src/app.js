@@ -109,6 +109,7 @@ const app = {
     if (sel.kind === "star") return this.catalog.starLabel(sel.index, sel.set); return this.catalog.dsoLabel(sel.set.rows[sel.index]);
   },
   select(sel, { center = false } = {}) {
+    document.body.classList.toggle("has-card", !!sel);
     this.state.selection = sel; this.ui.renderInfo(sel); this.dirty = true;
     if (sel && center) this.centerOn(sel);
     if (sel && this.state.settings.hapticTick && navigator.vibrate) navigator.vibrate(8);
@@ -296,5 +297,14 @@ function loop() {
   app.renderer.render(scene);
   if (!scene.ripple) app._ripple = null; else app.dirty = true;
 }
+// bottom panel: the grab handle collapses / expands the panel (touch + mouse)
+(() => {
+  const panel = document.querySelector("#panel"); if (!panel) return;
+  let start = null;
+  panel.addEventListener("pointerdown", (e) => { const r = panel.getBoundingClientRect(); if (e.clientY - r.top < 22 && panel.scrollTop === 0) start = [e.clientY, performance.now()]; });
+  panel.addEventListener("pointerup", (e) => { if (!start) return; const dy = e.clientY - start[0], dt = performance.now() - start[1]; start = null;
+    if (dy > 40) panel.classList.add("collapsed"); else if (dy < -40) panel.classList.remove("collapsed"); else if (dt < 300 && Math.abs(dy) < 8) panel.classList.toggle("collapsed"); });
+  panel.addEventListener("pointercancel", () => { start = null; });
+})();
 window.skyfathom = app; // debugging handle
 boot();

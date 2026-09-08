@@ -65,7 +65,7 @@ export function createState() {
         if (j.settings) s.settings = { ...DEFAULT_SETTINGS, ...j.settings };
         if (j.gear) s.gear = { ...s.gear, ...j.gear };
         if (j.calibration) s.calibration = { ...s.calibration, ...j.calibration };
-        if (j.view) Object.assign(s.view, j.view);
+        if (j.view) { Object.assign(s.view, j.view); if (!(s.view.fov >= 20 && s.view.fov <= 180)) s.view.fov = 90; if (!(s.view.alt >= 5)) s.view.alt = 35; }
       } catch { /* ignore corrupt storage */ }
     },
     toast(msg, ms = 2500) { s.ui.toast = msg; s.emit(); clearTimeout(s._toastT); s._toastT = setTimeout(() => { s.ui.toast = null; s.emit(); }, ms); },
