@@ -5,7 +5,9 @@ import { WMM } from "../engine/geomag.js";
 import ar from "../modes/ar.js";
 import { moonSvg } from "../modes/planner.js";
 import { FACTS, distances, galileanMoons, MOON_RADIUS_KM } from "../engine/planets.js";
+import { perihelionDate } from "../engine/comets.js";
 import { APP_VERSION } from "../app.js";
+import { vecToRaDec as vecToRaDecLocal } from "../engine/transform.js";
 
 const $ = (s) => document.querySelector(s);
 const h = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -78,6 +80,10 @@ export function initPanels(app) {
         if (F?.note) rows.push(["Note", F.note]);
       } else if (sel.kind === "constellation") {
         sub = `Constellation · ${sel.ref.abbr} · ${sel.ref.starCount} line stars`; rows = [];
+      } else if (sel.kind === "comet") {
+        const c = app.comets?.[sel.index];
+        sub = `Comet · ${c?.el.type === "P" ? "periodic" : "long-period / new"} · elements MPC ${app.cometData?.fetched?.slice(0, 10) ?? ""}`;
+        if (c) { const per = perihelionDate(c.el); rows = [["Magnitude (predicted)", c.mag.toFixed(1)], ["Distance from Sun", `${c.r.toFixed(3)} AU`], ["Distance from Earth", `${c.delta.toFixed(3)} AU · ${Math.round(c.delta * 149.6)} million km`], ["Elongation", `${c.elong.toFixed(0)}° from the Sun`], ["Perihelion", `${app.fmtDate(per.getTime())} at ${c.el.q.toFixed(3)} AU`], ["Orbit", `e ${c.el.e.toFixed(4)} · i ${c.el.i.toFixed(1)}°${c.el.e < 1 ? ` · period ${(Math.pow(c.el.q / (1 - c.el.e), 1.5)).toFixed(1)} yr` : " · not returning"}`], ["Brightest", `mag ${c.el.peakMag} around ${c.el.peakT}`], ...starRiseSet(vecToRaDecLocal(c.vec).ra, vecToRaDecLocal(c.vec).dec)]; }
       } else if (sel.kind === "moon") {
         const j = app.bodies.find(b => b.name === "Jupiter"); let mo = null; try { mo = galileanMoons(t).find(m => m.name === sel.ref); } catch { /* ignore */ }
         sub = "Moon of Jupiter (Galilean)";
@@ -90,6 +96,7 @@ export function initPanels(app) {
         rows = p ? [["Status", p.el < 0 ? "below the horizon" : p.sunlit ? (app.sunAlt < -6 ? "sunlit — visible to the eye" : "sunlit, but daylight") : "in Earth's shadow — invisible"], ["Height", `${p.altKm.toFixed(0)} km`], ["Distance", `${p.rangeKm.toFixed(0)} km`], ["Speed", `${p.velKmS.toFixed(2)} km/s`], ["Brightness", p.sunlit ? `≈ mag ${p.mag.toFixed(1)}` : "—"]] : [["Status", "computing…"]];
       }
       const c = rd && sel.kind !== "sat" && sel.kind !== "moon" ? E.constellationAt(rd.ra, rd.dec) : null;
+      void c;
       const below = aa.alt < 0;
       if (app.modeName === "ar") { // compact card so the pointing guide stays visible
         box.classList.add("compact");
@@ -125,11 +132,14 @@ export function initPanels(app) {
       const q = $("#q"), res = $("#q-res"); q.focus();
       let timer;
       q.oninput = () => { clearTimeout(timer); timer = setTimeout(async () => {
-        let items = [...app.sats.search(q.value, 4), ...app.catalog.search(q.value)];
+        const qq = q.value.trim().toLowerCase();
+        const cometHits = qq.length >= 2 ? (app.comets || []).filter(c => c.name.toLowerCase().includes(qq) || (qq === "comet" || qq === "comets")).slice(0, 5).map(c => ({ kind: "comet", index: c.i, label: c.name, sub: `Comet · mag ${c.mag.toFixed(1)} · ${c.alt > 0 ? "above" : "below"} the horizon` })) : [];
+        let items = [...cometHits, ...app.sats.search(q.value, 4), ...app.catalog.search(q.value)];
         if (!items.length && q.value.length > 3) items = await app.catalog.searchFull(q.value);
         res.innerHTML = items.map((it, i) => `<button data-i="${i}"><span>${h(it.label)}</span><small>${h(it.sub)}</small></button>`).join("") || (q.value ? "<p class='muted'>No match.</p>" : "");
         res.querySelectorAll("button").forEach(b => b.onclick = () => { const it = items[+b.dataset.i]; ui.close();
-          if (it.kind === "sat") app.select({ kind: "sat", index: it.index }, { center: true });
+          if (it.kind === "comet") app.select({ kind: "comet", index: it.index }, { center: true });
+          else if (it.kind === "sat") app.select({ kind: "sat", index: it.index }, { center: true });
           else if (it.kind === "body") app.select({ kind: "body", ref: it.ref }, { center: true });
           else if (it.kind === "constellation") app.select({ kind: "constellation", ref: it.ref }, { center: true });
           else app.select({ kind: it.kind, set: it.set, index: it.index }, { center: true }); });
@@ -201,6 +211,7 @@ export function initPanels(app) {
   rail("#rail-art", () => { st.settings.constellationArt = !st.settings.constellationArt; st.save(); ui.updateRail(); app.requestRender(); st.toast(st.settings.constellationArt ? "Constellation artwork on" : "Constellation artwork off", 1500); });
   rail("#rail-night", () => { st.settings.nightMode = !st.settings.nightMode; document.body.classList.toggle("night", st.settings.nightMode); st.save(); ui.updateRail(); app.requestRender(); });
   rail("#rail-locate", () => app.locateOnce(false));
+  rail("#rail-allsky", () => { const v = app.state.view, on = v.fov >= 170 && v.alt >= 85; if (on && app._preAllSky) { app.animateView(app._preAllSky, 700); app._preAllSky = null; } else { app._preAllSky = { az: v.az, alt: v.alt, fov: v.fov }; if (app.modeName !== "planetarium") app.setMode("planetarium"); app.follow = false; app.animateView({ az: v.az, alt: 89.9, fov: 180 }, 800); app.state.toast("Whole sky: the circle is the horizon, zenith at the centre. Tap again to return.", 3500); } });
   rail("#rail-cam", () => ar.toggleCamera(app));
   rail("#searchbar", () => ui.open("search"));
   ui.updateRail = () => { $("#rail-art")?.classList.toggle("on", !!st.settings.constellationArt); $("#rail-night")?.classList.toggle("on", !!st.settings.nightMode); };

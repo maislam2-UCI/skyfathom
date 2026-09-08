@@ -27,6 +27,8 @@ jobs:
         run: npm test
       - name: Refresh satellite TLEs (CelesTrak)
         run: node tools/fetch-tle.mjs || echo "TLE refresh failed; shipping the committed snapshot"
+      - name: Refresh comet elements (Minor Planet Center)
+        run: node tools/fetch-comets.mjs || echo "Comet refresh failed; shipping the committed snapshot"
       - name: Stamp service-worker cache version with the commit
         run: |
           sed -i "s/const VERSION = \"skyfathom-v[^\"]*\"/const VERSION = \"skyfathom-${GITHUB_SHA::8}\"/" src/sw.js

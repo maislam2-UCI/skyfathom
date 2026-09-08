@@ -67,7 +67,7 @@ export default {
       }
       else if (ptrs.size === 1) { const [p] = [...ptrs.values()]; dragStart = { x: p[0], y: p[1], az: st.view.az, alt: st.view.alt }; }
     };
-    const onWheel = (e) => { e.preventDefault(); const target = Math.max(0.04, Math.min(150, (this._wheelTarget ?? st.view.fov) * (e.deltaY > 0 ? 1.15 : 0.87))); this._wheelTarget = target; app.animateView({ az: st.view.az, alt: st.view.alt, fov: target }, 180); clearTimeout(this._wheelT); this._wheelT = setTimeout(() => { this._wheelTarget = null; if (target < 50) app.catalog.loadFaint().then(() => app.requestRender()); }, 250); };
+    const onWheel = (e) => { e.preventDefault(); const target = Math.max(0.04, Math.min(180, (this._wheelTarget ?? st.view.fov) * (e.deltaY > 0 ? 1.15 : 0.87))); this._wheelTarget = target; app.animateView({ az: st.view.az, alt: st.view.alt, fov: target }, 180); clearTimeout(this._wheelT); this._wheelT = setTimeout(() => { this._wheelTarget = null; if (target < 50) app.catalog.loadFaint().then(() => app.requestRender()); }, 250); };
     c.addEventListener("pointerdown", onDown); c.addEventListener("pointermove", onMove); c.addEventListener("pointerup", onUp); c.addEventListener("pointercancel", onUp); c.addEventListener("wheel", onWheel, { passive: false });
     this._h = { onDown, onMove, onUp, onWheel };
   },
@@ -77,7 +77,7 @@ export default {
     this._h = null;
   },
   _zoomTo(app, fov) {
-    const st = app.state; st.view.fov = Math.max(0.04, Math.min(150, fov));
+    const st = app.state; st.view.fov = Math.max(0.04, Math.min(180, fov));
     if (st.view.fov < 50 && !app.catalog.faint) app.catalog.loadFaint().then(() => app.requestRender());
     app.requestRender();
   },
@@ -86,6 +86,7 @@ export default {
     const hit = app.renderer.pick(x, y, 24);
     if (hit?.kind === "gc") { app.state.toast("Milky Way core — the galactic centre in Sagittarius. Best photographed when it is high in a moonless sky (see Tonight).", 4500); return; }
     if (hit?.kind === "moon") { app.select({ kind: "moon", ref: hit.ref }); return; }
+    if (hit?.kind === "comet") { app.select({ kind: "comet", index: hit.index }); return; }
     if (hit) { app.select(hit.kind === "body" ? { kind: "body", ref: hit.ref } : { kind: hit.kind, set: hit.set, index: hit.index }); return; }
     // fall back to a catalog search around the tapped direction (faint stars, small DSOs)
     const u = app.projector.unproject(x, y), radius = Math.max(0.3, 24 / app.projector.pxPerDeg);

@@ -1,7 +1,7 @@
 // Entry point: state → sensors → engine → active mode → canvas. Modes and panels talk through `app`.
 import { createState, deviceTimeZone } from "./engine/state.js";
 import { Catalog } from "./engine/catalog.js";
-import { Projector, vecToAltAz, norm24, altAzToRaDec as altAzToRaDecLocal } from "./engine/transform.js";
+import { Projector, vecToAltAz, vecToRaDec, norm24, altAzToRaDec as altAzToRaDecLocal } from "./engine/transform.js";
 import * as E from "./engine/ephemeris.js";
 import { declination } from "./engine/geomag.js";
 import { SkyRenderer } from "./render/sky.js";
@@ -12,6 +12,8 @@ import { activeShowers } from "./engine/meteors.js";
 import { LightPollution, describe as describeBortle } from "./engine/darksky.js";
 import { ROTATION, centralMeridian, GlobeRenderer } from "./render/globe.js";
 import { galileanMoons } from "./engine/planets.js";
+import { cometState } from "./engine/comets.js";
+import { precessionMatrix as precM, mulMatVec as mulMV } from "./engine/transform.js";
 import { PassAlerts } from "./engine/alerts.js";
 import { Aurora, geomagneticLatitude, kpNeeded, kpScale } from "./engine/aurora.js";
 import { eqVec, precessionMatrix, mulMatVec } from "./engine/transform.js";
@@ -74,6 +76,7 @@ const app = {
     });
     this.sunAlt = this.bodies[0].alt;
     try { this.jupiterMoons = galileanMoons(t); } catch { this.jupiterMoons = null; }
+    if (this.cometData && (!this._cometT || Math.abs(t - this._cometT) > 60000)) { this._cometT = t; const M = precM(t); this.comets = this.cometData.comets.map((el, i) => { try { const s = cometState(el, t); const aa = E.toAltAz(this.obs, t, ...(() => { const { ra, dec } = vecToRaDec(mulMV(M, s.vec)); return [ra, dec]; })()); return { i, name: el.name, el, ...s, vec: mulMV(M, s.vec), tail: mulMV(M, s.tail), alt: aa.alt, az: aa.az }; } catch { return null; } }).filter(Boolean); }
     this.sats.requestPositions(t);
     if (!this._radiantsT || Math.abs(t - this._radiantsT) > 3600000) { this._radiantsT = t; const M = precessionMatrix(t); this.radiants = activeShowers(t).map(s => ({ name: s.name, id: s.id, zhr: s.zhr, v: mulMatVec(M, eqVec(s.ra, s.dec)), peak: s.peak })); }
     this.projector.setSky(this.lstH, this.state.observer.lat); // keep alt/az readouts correct even before the next frame
@@ -82,6 +85,7 @@ const app = {
   /** Alt/az of any selection right now. */
   altAzOf(sel) {
     if (!sel) return null;
+    if (sel.kind === "comet") { const c = this.comets?.[sel.index]; return c ? { alt: c.alt, az: c.az } : null; }
     if (sel.kind === "moon") return this.altAzOf({ kind: "body", ref: "Jupiter" });
     if (sel.kind === "sat") { const p = this.sats.positions.get(sel.index); return p ? { alt: p.el, az: p.az } : null; }
     if (sel.kind === "body") { const b = this.bodies.find(b => b.name === sel.ref); return b ? { alt: b.alt, az: b.az } : null; }
@@ -90,6 +94,7 @@ const app = {
     return vecToAltAz(this.projector.eqToHor(v[0], v[1], v[2]));
   },
   raDecOf(sel) {
+    if (sel.kind === "comet") { const c = this.comets?.[sel.index]; return c ? vecToRaDec(c.vec) : null; }
     if (sel.kind === "moon") return this.raDecOf({ kind: "body", ref: "Jupiter" });
     if (sel.kind === "sat") { const aa = this.altAzOf(sel); if (!aa) return null; const u = altAzToRaDecLocal(aa.alt, aa.az, this.state.observer.lat, this.state.observer.lon, this.now); return u; }
     if (sel.kind === "body") { const b = this.bodies.find(b => b.name === sel.ref); return b ? { ra: b.ra, dec: b.dec } : null; }
@@ -97,6 +102,7 @@ const app = {
     return this.catalog.raDecOfDate(sel.set, sel.index);
   },
   labelOf(sel) {
+    if (sel.kind === "comet") return this.comets?.[sel.index]?.name ?? "Comet";
     if (sel.kind === "moon") return sel.ref;
     if (sel.kind === "sat") return this.sats.prettyName(sel.index);
     if (sel.kind === "body") return sel.ref; if (sel.kind === "constellation") return `${sel.ref.latin} (${sel.ref.name})`;
@@ -189,6 +195,7 @@ async function boot() {
   refreshBadges(); setInterval(refreshBadges, 60000);
   setTimeout(() => { app.lp = new LightPollution(); app.lp.load("./data/lightpollution.png").then(() => { app.bortleHere = app.lp.bortle(st.observer.lat, st.observer.lon); refreshBadges(); }).catch(() => {}); }, 6000);
   app.globes = new GlobeRenderer("./assets/"); app.globes.onLoad = () => { app.dirty = true; };
+  fetch("./data/comets.json").then(r => r.json()).then(j => { app.cometData = j; app._cometT = 0; app.updateEphemeris(true); }).catch(e => report("comets: " + e.message));
   app.alerts = new PassAlerts(app);
   app.aurora = new Aurora();
   const auroraCheck = async () => {
@@ -277,7 +284,7 @@ function loop() {
   P.setSky(app.lstH, st.observer.lat);
   P.setView(st.view);
   const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0, arGuide: false,
-    radiants: app.radiants || [], sats: app.satList, satTrails: app.sats.trails, globes: app.globes, jupiterMoons: app.jupiterMoons, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
+    radiants: app.radiants || [], sats: app.satList, satTrails: app.sats.trails, globes: app.globes, jupiterMoons: app.jupiterMoons, comets: app.comets || [], satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
     glBackground: !!app.gl?.ok, requestRender: () => app.requestRender(), selectionLabel: st.selection ? app.labelOf(st.selection) : "" };
   app.mode?.frame?.(app, scene);
   if (app.gl?.ok) {

@@ -10,7 +10,10 @@
     "catalog": "node tools/build-catalog.mjs",
     "icons": "node tools/make-icons.mjs",
     "cert": "node tools/make-cert.mjs",
-    "tle": "node tools/fetch-tle.mjs"
+    "tle": "node tools/fetch-tle.mjs",
+    "comets": "node tools/fetch-comets.mjs"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

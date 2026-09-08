@@ -10,6 +10,8 @@ import { skyForecast, bestWindow, sqmFromBortle } from "../engine/skyquality.js"
 import { geomagneticLatitude, kpNeeded, kpScale, kpColor } from "../engine/aurora.js";
 import { surfacePoint } from "../render/globe.js";
 import { Orrery, helioEcl } from "../render/orrery.js";
+import { localSolarEclipses, globalSolarEclipses, lunarEclipses, transits } from "../engine/eclipses.js";
+import { perihelionDate } from "../engine/comets.js";
 import { FACTS, distances } from "../engine/planets.js";
 
 const $ = (s) => document.querySelector(s);
@@ -30,10 +32,10 @@ export default {
   hud(app) { app.hud(`<b>Tonight</b> · ${app.state.observer.name} · ${app.fmtDate(app.now)}`); },
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
-  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["system", "Solar System"], ["earth", "Earth"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
+  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["eclipses", "Eclipses"], ["comets", "Comets"], ["system", "Solar System"], ["earth", "Earth"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
   bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { clearInterval(this._earthTimer); this._sysStop?.(); this.view = b.dataset.view; this.render(app); }); },
   render(app) {
-    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else if (this.view === "aurora") this._renderAurora(app); else if (this.view === "earth") this._renderEarth(app); else if (this.view === "system") this._renderSystem(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
+    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else if (this.view === "aurora") this._renderAurora(app); else if (this.view === "earth") this._renderEarth(app); else if (this.view === "system") this._renderSystem(app); else if (this.view === "eclipses") this._renderEclipses(app); else if (this.view === "comets") this._renderComets(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
   },
   _render(app) {
     const st = app.state, obs = app.obs, t = app.now, panel = $("#panel");
@@ -176,6 +178,46 @@ export default {
         app.state.toast("Time set to the pass — tap the time chip and “Live now” to come back.", 4000);
       });
     } catch (e) { el.innerHTML = `<p class="muted">Pass prediction failed: ${h(e.message)}</p>`; }
+  },
+  // ---------------- Eclipses ----------------
+  _renderEclipses(app) {
+    const st = app.state, panel = $("#panel"), obs = app.obs, t = app.now;
+    panel.innerHTML = `${this.tabs()}<h2>Eclipses · ${h(st.observer.name)}</h2><p class="muted">Computing…</p>`;
+    setTimeout(() => {
+      const T = (d) => (d ? `${app.fmtDate(d.getTime())} · ${app.fmtTime(d.getTime())}` : "—"), Tt = (d) => (d ? app.fmtTime(d.getTime()) : "—");
+      let solar = [], global = [], lunar = [], tr = [];
+      try { solar = localSolarEclipses(obs, t, 4); } catch (e) { app.report?.("solar: " + e.message); }
+      try { global = globalSolarEclipses(t, 6); } catch { /* ignore */ }
+      try { lunar = lunarEclipses(obs, t, 5); } catch (e) { app.report?.("lunar: " + e.message); }
+      try { tr = transits(t); } catch { /* ignore */ }
+      const kindTag = (k) => k === "total" ? "<span class=\"tag good\">total</span>" : k === "annular" ? "<span class=\"tag warn\">annular</span>" : k === "penumbral" ? "<span class=\"tag\">penumbral</span>" : `<span class="tag warn">${k}</span>`;
+      const solarRows = solar.map(e => `<div class="ds-card"><div class="title">Solar eclipse ${kindTag(e.kind)} · ${Math.round(e.obscuration * 100)}% of the Sun covered here</div>
+        <div class="grid" style="margin-top:6px"><div><b>Starts</b>${T(e.partialBegin)}</div>${e.totalBegin ? `<div><b>${e.kind === "annular" ? "Annularity" : "Totality"}</b>${Tt(e.totalBegin)} – ${Tt(e.totalEnd)}</div>` : ""}<div><b>Maximum</b>${Tt(e.peak)} · Sun ${e.peakAlt.toFixed(0)}° up</div><div><b>Ends</b>${Tt(e.partialEnd)}</div></div>
+        <div class="row"><button class="btn small" data-show="${e.peak.getTime()}" data-body="Sun">Show in the sky</button><button class="btn small" data-cal="${e.peak.getTime()}" data-title="Solar eclipse (${e.kind}, ${Math.round(e.obscuration * 100)}%)">📅 Add to calendar</button></div>
+        <div class="muted" style="margin-top:6px">Never look at the Sun without certified eclipse glasses or a proper solar filter.</div></div>`).join("");
+      const lunarRows = lunar.map(e => `<div class="ds-card"><div class="title">Lunar eclipse ${kindTag(e.kind)} <span class="tag ${e.visible === "peak visible" ? "good" : e.visible === "partly visible" ? "warn" : "bad"}">${e.visible}</span></div>
+        <div class="grid" style="margin-top:6px"><div><b>Penumbra</b>${T(e.penumbralBegin)} → ${Tt(e.penumbralEnd)}</div>${e.partialBegin ? `<div><b>Partial</b>${Tt(e.partialBegin)} – ${Tt(e.partialEnd)}</div>` : ""}${e.totalBegin ? `<div><b>Totality</b>${Tt(e.totalBegin)} – ${Tt(e.totalEnd)}</div>` : ""}<div><b>Maximum</b>${Tt(e.peak)} · Moon ${e.altPeak.toFixed(0)}° ${e.altPeak > 0 ? "up" : "(below horizon)"}</div><div><b>Umbral coverage</b>${Math.round(e.obscuration * 100)}%</div></div>
+        <div class="row"><button class="btn small" data-show="${e.peak.getTime()}" data-body="Moon">Show in the sky</button><button class="btn small" data-cal="${e.peak.getTime()}" data-title="Lunar eclipse (${e.kind})">📅 Add to calendar</button></div></div>`).join("");
+      panel.innerHTML = `${this.tabs()}<h2>Eclipses · ${h(st.observer.name)}</h2>
+        <h3>Solar eclipses visible from here</h3>${solarRows || "<p class='muted'>No solar eclipse visible from this location in the search range.</p>"}
+        <h3>Lunar eclipses</h3>${lunarRows}
+        <h3>Next solar eclipses worldwide</h3><table><tr><th>Date</th><th>Type</th><th>Greatest eclipse near</th></tr>${global.map(e => `<tr><td>${app.fmtDate(e.peak.getTime())}</td><td>${e.kind}</td><td>${Number.isFinite(e.lat) ? `${Math.abs(e.lat).toFixed(0)}°${e.lat >= 0 ? "N" : "S"} ${Math.abs(e.lon).toFixed(0)}°${e.lon >= 0 ? "E" : "W"}` : "—"}</td></tr>`).join("")}</table>
+        ${tr.length ? `<h3>Next transits across the Sun</h3><div class="list">${tr.map(x => `<button data-show="${x.peak.getTime()}" data-body="Sun"><span><b>${x.body}</b> transit</span><small>${app.fmtTime(x.peak.getTime(), { date: true })}</small></button>`).join("")}</div>` : ""}
+        <p class="muted">Times are local for ${h(st.observer.name)}. Solar circumstances are computed for this exact spot; lunar eclipse visibility depends only on whether the Moon is up.</p>`;
+      panel.querySelectorAll("[data-show]").forEach(b => b.onclick = () => { const tt = +b.dataset.show; st.time = { live: false, offsetMs: 0, epoch: tt }; app.updateEphemeris(true); st.emit(); app.setMode("planetarium"); setTimeout(() => { app.select({ kind: "body", ref: b.dataset.body }); app.closeUp({ kind: "body", ref: b.dataset.body }); }, 400); st.toast("Clock set to the eclipse — tap the time chip and Live now to return.", 4000); });
+      panel.querySelectorAll("[data-cal]").forEach(b => b.onclick = async () => { const tt = +b.dataset.cal; const r = await deliverIcs(buildIcs([{ title: b.dataset.title, start: tt - 90 * 60000, end: tt + 90 * 60000, alarmMin: 24 * 60, description: "Predicted by Skyfathom for " + st.observer.name, location: st.observer.name, uid: "ecl-" + Math.round(tt / 3600000) }], "Skyfathom eclipses"), "eclipse.ics"); if (r === "downloaded") st.toast("Calendar file saved — open it to add the event.", 4000); });
+    }, 30);
+  },
+  // ---------------- Comets ----------------
+  _renderComets(app) {
+    const st = app.state, panel = $("#panel");
+    const list = (app.comets || []).slice().sort((a, b) => a.mag - b.mag);
+    const T = (d) => app.fmtDate(d.getTime());
+    panel.innerHTML = `${this.tabs()}<h2>Comets</h2>
+      <p class="muted">Every comet the Minor Planet Center predicts brighter than magnitude 14 this year, positioned from its orbital elements (snapshot ${app.cometData?.fetched?.slice(0, 10) ?? "—"}). Comet brightness is notoriously unpredictable — treat magnitudes as ±1.</p>
+      <div class="list">${list.map(c => `<button data-comet="${c.i}"><span><b>${h(c.name)}</b> <span class="tag ${c.mag < 6 ? "good" : c.mag < 10 ? "warn" : ""}">mag ${c.mag.toFixed(1)}</span><br><small>${c.alt > 0 ? `${c.alt.toFixed(0)}° up ${compass(c.az)} now` : "below the horizon now"} · ${c.elong.toFixed(0)}° from the Sun · ${c.r.toFixed(2)} AU from the Sun · perihelion ${T(perihelionDate(c.el))} · brightest ≈ mag ${c.el.peakMag} around ${c.el.peakT}</small></span><small>Show</small></button>`).join("") || "<p class='muted'>Comet data not loaded yet.</p>"}</div>
+      <p class="muted">Anything brighter than magnitude 6 is a naked-eye object from a dark site; 6–9 is binocular range; fainter needs a telescope. Comets show on the map with their tails pointing away from the Sun.</p>`;
+    panel.querySelectorAll("[data-comet]").forEach(b => b.onclick = () => { app.select({ kind: "comet", index: +b.dataset.comet }, { center: true }); app.setMode("planetarium"); setTimeout(() => app.select({ kind: "comet", index: +b.dataset.comet }, { center: true }), 300); });
   },
   // ---------------- Solar System view ----------------
   _renderSystem(app) {

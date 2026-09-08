@@ -14,3 +14,4 @@ Also vendored: `src/vendor/astronomy.browser.min.js` (astronomy-engine 2.1.19, M
 | darksites.json | 44 curated dark-sky destinations (USA + Bangladesh) with typical Bortle class | hand-curated from DarkSky International / park pages | CC0 (this project) |
 | assets/planet-*.jpg, planet-saturn-ring.png | Planet, Moon and Sun surface maps (1024×512, downsampled in-browser) used for the 3D globes | Solar System Scope textures (solarsystemscope.com/textures) | CC BY 4.0 |
 | assets/planet-earth.jpg, planet-earth-night.jpg | Earth day side (NASA Blue Marble, land_shallow_topo) and night lights (NASA Black Marble 2016), 1024×512 | NASA Earth Observatory | public domain |
+| comets.json | Orbital elements of comets predicted brighter than mag 14 in the coming year (refreshed daily by the workflow) | Minor Planet Center, CometEls.txt | free for redistribution with attribution (MPC) |

@@ -47,6 +47,7 @@ export class SkyRenderer {
     this._bodies(sc);
     if (sc.settings.satellites !== false && sc.sats?.length) this._satellites(sc);
     if (sc.radiants?.length) this._radiants(sc);
+    if (sc.comets?.length) this._comets(sc);
     this._horizon(sc);
     if (!sc.transparent) this._vignette();
     if (S.constellationLabels) this._constellationLabels(sc);
@@ -211,6 +212,7 @@ export class SkyRenderer {
       if (sel.kind === "body") { const b = sc.bodies.find(b => b.name === sel.ref); if (b) tgt = horVec(b.alt, b.az); name = sel.ref; }
       else if (sel.kind === "sat") { const s = sc.sats?.find(s => s.i === sel.index); if (s) tgt = horVec(s.el, s.az); name = (sc.selectionLabel || "").split(" ·")[0]; }
       else if (sel.kind === "moon") { const b = sc.bodies.find(b => b.name === "Jupiter"); if (b) tgt = horVec(b.alt, b.az); name = sel.ref; }
+      else if (sel.kind === "comet") { const c = sc.comets?.find(c => c.i === sel.index); if (c) tgt = horVec(c.alt, c.az); name = c ? c.name : "Comet"; }
       else if (sel.set && sel.set.x) { const s = sel.set, i = sel.index; const h = P.eqToHor(s.x[i], s.y[i], s.z[i]); tgt = h; name = sc.selectionLabel || ""; }
     }
     let sep = null, locked = false, dirAng = 0, tgtBehind = false;
@@ -541,6 +543,31 @@ export class SkyRenderer {
     ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.stroke();
   }
 
+  // ---------- comets: fuzzy coma + anti-sunward tail ----------
+  _comets(sc) {
+    const { ctx } = this, P = sc.projector, out = [0, 0, 0], t2 = [0, 0, 0], fov = P.view.fov;
+    const vis = this.vis; if (vis <= 0) return;
+    const sel = sc.selection?.kind === "comet" ? sc.selection.index : -1;
+    for (const c of sc.comets) {
+      const bright = c.mag < 8, isSel = c.i === sel;
+      if (!bright && !isSel && c.mag > (fov > 60 ? 9 : fov > 20 ? 11 : 14)) continue;
+      if (!sc.settings.belowHorizon && c.alt < -1) continue;
+      P.projectEq(c.vec[0], c.vec[1], c.vec[2], out); if (!out[2]) continue;
+      const x = out[0], y = out[1]; if (x < -40 || x > this.w + 40 || y < -40 || y > this.h + 40) continue;
+      const k = 0.08; const tv = [c.vec[0] + k * c.tail[0], c.vec[1] + k * c.tail[1], c.vec[2] + k * c.tail[2]]; const tn = Math.hypot(...tv);
+      P.projectEq(tv[0] / tn, tv[1] / tn, tv[2] / tn, t2);
+      const ang = t2[2] ? Math.atan2(t2[1] - y, t2[0] - x) : -Math.PI / 2;
+      const size = Math.max(3, 9 - c.mag * 0.6) * Math.pow(90 / Math.max(fov, 1), 0.2), tailLen = Math.max(14, (13 - c.mag) * 6) * Math.pow(90 / Math.max(fov, 1), 0.35);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+      const tg = ctx.createLinearGradient(0, 0, tailLen, 0); tg.addColorStop(0, `rgba(190,225,255,${0.5 * vis})`); tg.addColorStop(1, "rgba(190,225,255,0)");
+      ctx.fillStyle = tg; ctx.beginPath(); ctx.moveTo(0, -size * 0.6); ctx.lineTo(tailLen, -size * 1.4); ctx.lineTo(tailLen, size * 1.4); ctx.lineTo(0, size * 0.6); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      const g = ctx.createRadialGradient(x, y, 0, x, y, size * 2); g.addColorStop(0, `rgba(230,245,255,${0.95 * vis})`); g.addColorStop(0.35, `rgba(170,215,255,${0.5 * vis})`); g.addColorStop(1, "rgba(170,215,255,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, size * 2, 0, TAU); ctx.fill();
+      this.hits.push({ x, y, r: Math.max(size * 2, 10), kind: "comet", index: c.i, prio: -6 });
+      this.labels.push({ x: x + size * 2 + 3, y: y - size, text: `${c.name.replace(/\s*\(.*\)$/, "")} · mag ${c.mag.toFixed(1)}`, color: `rgba(200,230,255,${0.9 * vis})`, font: isSel || bright ? "600 11px system-ui" : "11px system-ui", prio: bright ? -6 : 0 });
+    }
+  }
   // ---------- meteor-shower radiants (active showers only) ----------
   _radiants(sc) {
     const { ctx } = this, P = sc.projector, out = [0, 0, 0];
@@ -653,6 +680,7 @@ export class SkyRenderer {
     let pos;
     if (sel.kind === "body") { const b = sc.bodies.find(b => b.name === sel.ref); if (!b) return; pos = P.projectAltAz(b.alt, b.az); }
     else if (sel.kind === "moon") { const h = this.hits.find(h => h.kind === "moon" && h.ref === sel.ref); if (!h) return; pos = [h.x, h.y, 1]; }
+    else if (sel.kind === "comet") { const c = sc.comets?.find(c => c.i === sel.index); if (!c) return; pos = P.projectEq(c.vec[0], c.vec[1], c.vec[2]); }
     else if (sel.kind === "sat") { const s = sc.sats?.find(s => s.i === sel.index); if (!s) return; pos = P.projectAltAz(s.el, s.az); }
     else { const s = sel.set, i = sel.index; pos = P.projectEq(s.x[i], s.y[i], s.z[i]); }
     if (!pos[2]) return;

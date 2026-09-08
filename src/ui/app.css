@@ -8,7 +8,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; overflow: hidden; overscroll-behavior: none; }
-body { position: fixed; inset: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+body { position: fixed; inset: 0; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 button:active { transform: scale(.97); }
 svg { fill: currentColor; }
@@ -53,7 +53,7 @@ p { margin: 6px 0; }
 #modes button.active { color: var(--accent); background: rgba(127,178,255,.10); }
 
 /* ---------- panels & cards ---------- */
-#panel { position: fixed; left: 0; right: 0; bottom: calc(var(--sab) + 62px); max-height: 62vh; z-index: 5; overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; background: var(--card); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border-top: 1px solid var(--line2); border-radius: 18px 18px 0 0; padding: 14px 16px 18px; user-select: text; box-shadow: var(--shadow); }
+#panel { position: fixed; left: 0; right: 0; bottom: calc(var(--sab) + 62px); max-height: 62vh; z-index: 5; overflow: auto; -webkit-overflow-scrolling: touch; touch-action: manipulation; background: var(--card); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border-top: 1px solid var(--line2); border-radius: 18px 18px 0 0; padding: 14px 16px 18px; user-select: text; box-shadow: var(--shadow); }
 #panel::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--line2); margin: -6px auto 10px; }
 #panel.collapsed { max-height: 52px; overflow: hidden; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -76,7 +76,7 @@ p { margin: 6px 0; }
 /* ---------- sheets ---------- */
 #sheet { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; animation: fade .15s ease-out; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-.sheet-inner { position: relative; width: 100%; max-height: 88vh; overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; background: var(--card-solid); border-radius: 20px 20px 0 0; padding: 18px 16px calc(var(--sab) + 18px); border-top: 1px solid var(--line2); user-select: text; animation: rise .2s ease-out; box-shadow: 0 -10px 40px rgba(0,0,0,.5); }
+.sheet-inner { position: relative; width: 100%; max-height: 88vh; overflow: auto; -webkit-overflow-scrolling: touch; touch-action: manipulation; background: var(--card-solid); border-radius: 20px 20px 0 0; padding: 18px 16px calc(var(--sab) + 18px); border-top: 1px solid var(--line2); user-select: text; animation: rise .2s ease-out; box-shadow: 0 -10px 40px rgba(0,0,0,.5); }
 .sheet-inner::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--line2); margin: -8px auto 12px; }
 .list { display: flex; flex-direction: column; }
 .list button { text-align: left; padding: 11px 8px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; align-items: baseline; border-radius: 8px; }
@@ -224,3 +224,9 @@ canvas.mchart { height: 90px; margin-top: 8px; }
 #ar-tools { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--sab) + 84px); z-index: 5; display: flex; gap: 8px; }
 #ar-tools .btn { background: var(--card); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border: 1px solid var(--line2); box-shadow: var(--shadow); font-weight: 600; }
 #ar-tools .btn:disabled { opacity: .5; }
+
+/* sliders and horizontal strips must own horizontal touches (phones) */
+input[type=range] { touch-action: none; height: 32px; }
+.seg, .timeline, .dsmap { touch-action: pan-x pan-y; }
+canvas.dsmap { touch-action: none; }
+#rail-allsky.on { color: var(--accent); }
