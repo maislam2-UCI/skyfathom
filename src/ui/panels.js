@@ -39,7 +39,7 @@ export function initPanels(app) {
     },
     updateCompass() {
       const c = app.projector.unproject(app.renderer.w / 2, app.renderer.h / 2); if (!Number.isFinite(c.az)) return;
-      const rose = $("#compass-rose"); if (rose) rose.style.transform = `rotate(${-c.az}deg)`;
+      const rose = $("#compass-rose"); if (rose) { const prev = this._roseDeg ?? -c.az; let d = -c.az - (((prev % 360) + 360) % 360); d = (((d % 360) + 540) % 360) - 180; this._roseDeg = prev + d; rose.style.transform = `rotate(${this._roseDeg}deg)`; }
       const t = $("#compass-text"); if (t) t.textContent = `${compass(c.az)} ${c.az.toFixed(0)}° · ${c.alt >= 0 ? "+" : ""}${c.alt.toFixed(0)}°`;
     },
     renderInfo(sel) {
@@ -161,7 +161,7 @@ export function initPanels(app) {
         <h3>Display</h3>${tog("nightMode", "Night vision (red)", "keeps your dark adaptation")}${tog("constellationLines", "Constellation lines")}${tog("constellationLabels", "Constellation names")}${tog("boundaries", "Constellation boundaries")}${tog("starLabels", "Star names")}${tog("showDso", "Deep-sky objects")}${tog("dsoLabels", "Deep-sky labels")}${tog("milkyWay", "Milky Way (photographic, ESO/S. Brunier)")}${tog("constellationArt", "Constellation artwork")}${tog("satellites", "Satellites (ISS, Tiangong, Starlink…)")}
         <div class="field"><label>Artwork opacity <span id="s-ao-v">${Math.round((S.artOpacity ?? 1) * 100)}%</span></label><input id="s-ao" type="range" min="0.2" max="2" step="0.1" value="${S.artOpacity ?? 1}"></div>${tog("ecliptic", "Ecliptic")}${tog("altAzGrid", "Alt/az grid")}${tog("showMeridian", "Meridian")}${tog("eqGrid", "RA/Dec grid")}${tog("belowHorizon", "Show sky below the horizon")}
         <div class="field"><label>Label density <span id="s-ld-v">${S.labelDensity.toFixed(1)}×</span></label><input id="s-ld" type="range" min="0.5" max="2" step="0.1" value="${S.labelDensity}"></div>
-        <h3>AR &amp; compass</h3>${tog("applyDeclination", "Correct compass with magnetic declination", `here ${app.declination >= 0 ? "+" : ""}${app.declination.toFixed(1)}° · ${WMM.name}`)}
+        <h3>AR &amp; compass</h3>${tog("applyDeclination", "Correct compass with magnetic declination", `here ${app.declination >= 0 ? "+" : ""}${app.declination.toFixed(1)}° · ${WMM.name}`)}<p class="muted">iPhones usually report true north already: if the AR sky is rotated by a constant ${Math.abs(app.declination).toFixed(0)}°, turn this off, or simply use Align in AR.</p>
         <div class="field"><label>Camera field of view across the screen width <span id="s-fov-v">${S.cameraFov}°</span></label><input id="s-fov" type="range" min="20" max="80" step="1" value="${S.cameraFov}"><span class="muted">iPhone main camera in portrait ≈ 37°; ultra-wide ≈ 70°. Adjust until the Moon or a bright star sits under the real one.</span></div>
         <div class="row"><button class="btn" id="s-reset-align">Reset compass alignment (${st.calibration.dAz.toFixed(1)}° / ${st.calibration.dAlt.toFixed(1)}°)</button></div>
         ${tog("hapticTick", "Haptic tick on selection")}

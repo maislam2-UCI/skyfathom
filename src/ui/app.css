@@ -220,3 +220,7 @@ canvas.mchart { height: 90px; margin-top: 8px; }
 .seg::-webkit-scrollbar { display: none; }
 .seg button { flex: 1 0 auto; min-width: 76px; }
 .timeline.kp { height: 64px; }
+
+#ar-tools { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--sab) + 84px); z-index: 5; display: flex; gap: 8px; }
+#ar-tools .btn { background: var(--card); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border: 1px solid var(--line2); box-shadow: var(--shadow); font-weight: 600; }
+#ar-tools .btn:disabled { opacity: .5; }
