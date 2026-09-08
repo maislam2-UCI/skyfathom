@@ -95,11 +95,13 @@ export function initPanels(app) {
           ${rows.map(([k, v]) => `<div><b>${h(k)}</b>${h(v)}</div>`).join("")}
         </div>
         <div class="row"><button class="btn primary" id="info-center">${app.modeName === "ar" ? "Where is it?" : "Centre"}</button>
+          ${sel.kind === "body" ? `<button class="btn" id="info-closeup">Close-up</button>` : ""}
           ${app.modeName === "ar" ? `<button class="btn" id="info-align">Align compass here</button>` : ""}
           ${sel.kind === "sat" ? `<button class="btn" id="info-passes">Next passes</button>` : `<button class="btn" id="info-frame">Plot tonight</button>`}</div>`;
       $("#info-close").onclick = () => app.select(null);
       $("#info-center").onclick = () => app.centerOn(sel);
       const fr = $("#info-frame"); if (fr) fr.onclick = () => app.setMode("framing");
+      const cu = $("#info-closeup"); if (cu) cu.onclick = () => app.closeUp(sel);
       const ps = $("#info-passes"); if (ps) ps.onclick = () => { app.setMode("planner"); setTimeout(() => $("#pl-sats")?.scrollIntoView({ block: "start", behavior: "smooth" }), 400); };
       const al = $("#info-align"); if (al) al.onclick = () => { if (!ar.alignTo(app, sel)) st.toast("Point the crosshair at this object first, then tap Align.", 3000); };
     },

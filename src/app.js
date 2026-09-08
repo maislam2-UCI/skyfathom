@@ -10,6 +10,7 @@ import { forecast } from "./weather.js";
 import { Satellites } from "./engine/satellites.js";
 import { activeShowers } from "./engine/meteors.js";
 import { LightPollution, describe as describeBortle } from "./engine/darksky.js";
+import { ROTATION, centralMeridian, GlobeRenderer } from "./render/globe.js";
 import { PassAlerts } from "./engine/alerts.js";
 import { Aurora, geomagneticLatitude, kpNeeded, kpScale } from "./engine/aurora.js";
 import { eqVec, precessionMatrix, mulMatVec } from "./engine/transform.js";
@@ -60,7 +61,15 @@ const app = {
       const il = name === "Sun" ? { mag: -26.7, phaseFraction: 1 } : E.bodyIllumination(name, t);
       // apparent diameter: Sun/Moon from mean values; planets from equatorial diameter at 1 AU (arcsec)
       const diamDeg = name === "Sun" ? 0.5334 / p.distAu : name === "Moon" ? 0.5181 * (0.002570 / p.distAu) : (PLANET_ARCSEC_1AU[name] / p.distAu) / 3600;
-      return { name, alt: p.alt, az: p.az, ra: p.ra, dec: p.dec, distAu: p.distAu, mag: il.mag, phaseFraction: il.phaseFraction, diamDeg };
+      // geometry for the 3D globes: Sun direction from the body (equatorial frame), pole vector, central meridian
+      let lightEq = null, poleEq = null, cm = 0;
+      try {
+        const tm = Astronomy.MakeTime(new Date(t));
+        if (name !== "Sun") { const gb = Astronomy.GeoVector(name, tm, true), gs = Astronomy.GeoVector("Sun", tm, true); const v = [gs.x - gb.x, gs.y - gb.y, gs.z - gb.z], m = Math.hypot(...v) || 1; lightEq = [v[0] / m, v[1] / m, v[2] / m]; }
+        const R = ROTATION[name]; if (R) { const ra = R.ra * Math.PI / 180, dec = R.dec * Math.PI / 180; poleEq = [Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)]; }
+        if (name === "Moon") { const lib = Astronomy.Libration(tm); cm = { elon: lib.elon }; } else cm = centralMeridian(name, t);
+      } catch { /* geometry optional */ }
+      return { name, alt: p.alt, az: p.az, ra: p.ra, dec: p.dec, distAu: p.distAu, mag: il.mag, phaseFraction: il.phaseFraction, phaseAngle: il.phaseAngle, ringTilt: il.ringTilt, diamDeg, lightEq, poleEq, cm };
     });
     this.sunAlt = this.bodies[0].alt;
     this.sats.requestPositions(t);
@@ -108,17 +117,28 @@ const app = {
     cancelAnimationFrame(this._anim);
     const step = () => {
       const k = Math.min(1, (performance.now() - t0) / ms), e = ease(k);
+      if (this.follow && this.state.selection) { const aa = this.altAzOf(this.state.selection); if (aa) { target.az = aa.az; target.alt = aa.alt; dAz = ((target.az - from.az + 540) % 360) - 180; } }
       v.az = ((from.az + dAz * e) % 360 + 360) % 360; v.alt = from.alt + (target.alt - from.alt) * e;
       v.fov = from.fov * Math.pow(target.fov / from.fov, e);
       this.dirty = true;
-      if (k < 1) this._anim = requestAnimationFrame(step); else this.state.save();
+      if (k < 1) this._anim = requestAnimationFrame(step); else { this._anim = null; this.state.save(); }
     };
     step();
   },
   ripple(x, y) { this._ripple = { x, y, t0: performance.now() }; this.dirty = true; },
+  /** Zoom onto a body so it fills a good part of the screen, and keep following it as it moves. */
+  closeUp(sel) {
+    const aa = this.altAzOf(sel); if (!aa) return;
+    const b = sel.kind === "body" ? this.bodies.find(b => b.name === sel.ref) : null;
+    const fov = b ? Math.max(0.04, Math.min(30, b.diamDeg * (b.name === "Saturn" ? 5 : 3.2))) : 2;
+    this.follow = true;
+    if (this.modeName !== "planetarium") this.setMode("planetarium");
+    this.animateView({ az: aa.az, alt: aa.alt, fov }, 900);
+    this.state.toast(`Close-up: ${this.labelOf(sel).split(" ·")[0]} at ${fov < 1 ? (fov * 60).toFixed(1) + "′" : fov.toFixed(1) + "°"} field · drag to release · pinch to zoom`, 3500);
+  },
   setMode(name) {
     if (this.modeName === name) return;
-    this.mode?.exit?.(this); this.modeName = name; this.mode = MODES[name]; this.state.mode = name;
+    this.mode?.exit?.(this); this.modeName = name; this.mode = MODES[name]; this.state.mode = name; this.follow = false;
     document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("active", b.dataset.mode === name));
     try { this.mode.enter(this); } catch (e) { report(`${name} failed: ${e.message} @ ${(e.stack || "").split("\n")[1]?.trim() ?? "?"}`); const p = $("#panel"); if (p && name !== "planetarium") { p.hidden = false; p.innerHTML = `<h2>${name} could not open</h2><p class="error">${e.message}</p><p class="muted">${(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p>`; } }
     this.dirty = true; this.ui.updateChips();
@@ -163,6 +183,7 @@ async function boot() {
   setTimeout(() => app.catalog.loadFaint().then(() => (app.dirty = true)), 4000);
   refreshBadges(); setInterval(refreshBadges, 60000);
   setTimeout(() => { app.lp = new LightPollution(); app.lp.load("./data/lightpollution.png").then(() => { app.bortleHere = app.lp.bortle(st.observer.lat, st.observer.lon); refreshBadges(); }).catch(() => {}); }, 6000);
+  app.globes = new GlobeRenderer("./assets/"); app.globes.onLoad = () => { app.dirty = true; };
   app.alerts = new PassAlerts(app);
   app.aurora = new Aurora();
   const auroraCheck = async () => {
@@ -246,11 +267,12 @@ function loop() {
   if (!app.dirty && live && performance.now() - (app._lastFrame || 0) < (app.modeName === "ar" ? 0 : 1000)) return;
   app._lastFrame = performance.now(); app.dirty = false;
   const P = app.projector;
+  if (app.follow && st.selection && app.modeName === "planetarium" && !app._anim) { const aa = app.altAzOf(st.selection); if (aa) { st.view.az = aa.az; st.view.alt = aa.alt; } }
   P.setSize(app.renderer.w, app.renderer.h);
   P.setSky(app.lstH, st.observer.lat);
   P.setView(st.view);
   const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0, arGuide: false,
-    radiants: app.radiants || [], sats: app.satList, satTrails: app.sats.trails, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
+    radiants: app.radiants || [], sats: app.satList, satTrails: app.sats.trails, globes: app.globes, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
     glBackground: !!app.gl?.ok, requestRender: () => app.requestRender(), selectionLabel: st.selection ? app.labelOf(st.selection) : "" };
   app.mode?.frame?.(app, scene);
   if (app.gl?.ok) {

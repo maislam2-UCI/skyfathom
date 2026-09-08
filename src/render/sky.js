@@ -419,6 +419,32 @@ export class SkyRenderer {
   }
 
   // ---------- Sun, Moon, planets ----------
+  /** equatorial-frame vector → screen frame (x right, y up, z toward the viewer) */
+  _toScreen(P, v) { const m = P.eqCam; return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], -(m[6] * v[0] + m[7] * v[1] + m[8] * v[2])]; }
+  _globe(sc, b, sx, sy, r) {
+    const G = sc.globes; if (!G || !b.poleEq) return false;
+    const P = sc.projector;
+    const light = b.lightEq ? this._toScreen(P, b.lightEq) : [0, 0, 1];
+    const pole = this._toScreen(P, b.poleEq);
+    let cm = 0;
+    if (b.name === "Moon" && b.cm && typeof b.cm === "object") {
+      // choose the central meridian so the disc centre shows the sub-observer longitude (libration)
+      const Pn = pole, X0 = [1, 0, 0]; const d = X0[0] * Pn[0] + X0[1] * Pn[1] + X0[2] * Pn[2]; const X = [X0[0] - Pn[0] * d, X0[1] - Pn[1] * d, X0[2] - Pn[2] * d]; const nx = Math.hypot(...X) || 1; X[0] /= nx; X[1] /= nx; X[2] /= nx;
+      const Y = [Pn[1] * X[2] - Pn[2] * X[1], Pn[2] * X[0] - Pn[0] * X[2], Pn[0] * X[1] - Pn[1] * X[0]];
+      cm = (Math.atan2(Y[2], X[2]) * 180 / Math.PI) - b.cm.elon; // centre normal is (0,0,1)
+    } else if (typeof b.cm === "number") {
+      // planets: prime meridian W measured from the node Q = Z×pole; express relative to our X axis
+      const Pn = pole, Qeq = [-b.poleEq[1], b.poleEq[0], 0], nq = Math.hypot(...Qeq) || 1; const Qs = this._toScreen(P, [Qeq[0] / nq, Qeq[1] / nq, 0]);
+      const X0 = [1, 0, 0]; const d = X0[0] * Pn[0] + X0[1] * Pn[1] + X0[2] * Pn[2]; const X = [X0[0] - Pn[0] * d, X0[1] - Pn[1] * d, X0[2] - Pn[2] * d]; const nx = Math.hypot(...X) || 1; X[0] /= nx; X[1] /= nx; X[2] /= nx;
+      const Y = [Pn[1] * X[2] - Pn[2] * X[1], Pn[2] * X[0] - Pn[0] * X[2], Pn[0] * X[1] - Pn[1] * X[0]];
+      const qAng = Math.atan2(Qs[0] * Y[0] + Qs[1] * Y[1] + Qs[2] * Y[2], Qs[0] * X[0] + Qs[1] * X[1] + Qs[2] * X[2]) * 180 / Math.PI;
+      cm = qAng + b.cm - 180; // texture prime meridian sits at u = 0.5
+    }
+    const spr = G.sprite({ body: b.name, r, light, pole, cm });
+    if (!spr) return false;
+    this.ctx.drawImage(spr, sx - spr.width / 2, sy - spr.height / 2);
+    return true;
+  }
   _bodies(sc) {
     const { ctx } = this, P = sc.projector, out = [0, 0, 0];
     const sun = sc.bodies.find(b => b.name === "Sun");
@@ -426,8 +452,14 @@ export class SkyRenderer {
       if (!sc.settings.belowHorizon && b.alt < -1) continue;
       P.projectAltAz(b.alt, b.az, out); if (!out[2]) continue;
       const sx = out[0], sy = out[1];
-      if (sx < -80 || sx > this.w + 80 || sy < -80 || sy > this.h + 80) continue;
+      const discR = (b.diamDeg / 2) * this.pxDeg;
+      if (sx < -discR - 80 || sx > this.w + discR + 80 || sy < -discR - 80 || sy > this.h + discR + 80) continue;
       const st = BODY_STYLE[b.name];
+      if (discR >= (b.name === "Moon" || b.name === "Sun" ? 14 : 5) && discR < 4000 && this._globe(sc, b, sx, sy, discR)) {
+        this.hits.push({ x: sx, y: sy, r: Math.max(discR, 12), kind: "body", ref: b.name, prio: -20 });
+        this.labels.push({ x: sx + discR + 6, y: sy - discR, text: b.name, color: st.color, font: "600 12px system-ui", prio: -20 });
+        continue;
+      }
       if (b.name === "Sun") {
         const r = Math.max(7, (b.diamDeg / 2) * this.pxDeg);
         const g = ctx.createRadialGradient(sx, sy, r * 0.6, sx, sy, r * 7); g.addColorStop(0, "rgba(255,240,180,0.6)"); g.addColorStop(0.3, "rgba(255,220,150,0.18)"); g.addColorStop(1, "rgba(255,220,150,0)");

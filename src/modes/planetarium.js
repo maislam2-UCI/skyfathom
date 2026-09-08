@@ -38,7 +38,7 @@ export default {
         if (Math.hypot(dx, dy) > 4) moved = true;
         const degPx = st.view.fov / app.renderer.w;
         const altSign = st.view.alt > 0 ? 1 : 1;
-        const nowT = performance.now(), prevAz = st.view.az, prevAlt = st.view.alt;
+        const nowT = performance.now(), prevAz = st.view.az, prevAlt = st.view.alt; app.follow = false;
         st.view.az = ((dragStart.az - dx * degPx * altSign) % 360 + 360) % 360;
         st.view.alt = Math.max(-40, Math.min(89.5, dragStart.alt + dy * degPx));
         if (last) { const dt = Math.max(8, nowT - last); vel = { az: (((st.view.az - prevAz + 540) % 360) - 180) / dt, alt: (st.view.alt - prevAlt) / dt, t: nowT }; }
@@ -67,7 +67,7 @@ export default {
       }
       else if (ptrs.size === 1) { const [p] = [...ptrs.values()]; dragStart = { x: p[0], y: p[1], az: st.view.az, alt: st.view.alt }; }
     };
-    const onWheel = (e) => { e.preventDefault(); const target = Math.max(3, Math.min(150, (this._wheelTarget ?? st.view.fov) * (e.deltaY > 0 ? 1.15 : 0.87))); this._wheelTarget = target; app.animateView({ az: st.view.az, alt: st.view.alt, fov: target }, 180); clearTimeout(this._wheelT); this._wheelT = setTimeout(() => { this._wheelTarget = null; if (target < 50) app.catalog.loadFaint().then(() => app.requestRender()); }, 250); };
+    const onWheel = (e) => { e.preventDefault(); const target = Math.max(0.04, Math.min(150, (this._wheelTarget ?? st.view.fov) * (e.deltaY > 0 ? 1.15 : 0.87))); this._wheelTarget = target; app.animateView({ az: st.view.az, alt: st.view.alt, fov: target }, 180); clearTimeout(this._wheelT); this._wheelT = setTimeout(() => { this._wheelTarget = null; if (target < 50) app.catalog.loadFaint().then(() => app.requestRender()); }, 250); };
     c.addEventListener("pointerdown", onDown); c.addEventListener("pointermove", onMove); c.addEventListener("pointerup", onUp); c.addEventListener("pointercancel", onUp); c.addEventListener("wheel", onWheel, { passive: false });
     this._h = { onDown, onMove, onUp, onWheel };
   },
@@ -77,7 +77,7 @@ export default {
     this._h = null;
   },
   _zoomTo(app, fov) {
-    const st = app.state; st.view.fov = Math.max(3, Math.min(150, fov));
+    const st = app.state; st.view.fov = Math.max(0.04, Math.min(150, fov));
     if (st.view.fov < 50 && !app.catalog.faint) app.catalog.loadFaint().then(() => app.requestRender());
     app.requestRender();
   },
