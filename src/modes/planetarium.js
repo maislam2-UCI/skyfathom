@@ -14,7 +14,7 @@ export default {
     const st = app.state, v = st.view;
     const c = app.projector.unproject(app.renderer.w / 2, app.renderer.h / 2);
     if (!Number.isFinite(c.alt)) return;
-    app.hud(`<b>${st.time.live ? "Live" : "Paused"}</b> · ${app.fmtTime(app.now, { seconds: true })} · fov ${v.fov.toFixed(0)}° · centre alt ${c.alt.toFixed(0)}° az ${c.az.toFixed(0)}°`);
+    app.hud(`<b>${st.time.live ? "Live" : "Paused"}</b> · ${app.fmtTime(app.now, { seconds: true })} · fov ${v.fov < 1 ? (v.fov * 60).toFixed(1) + "′" : v.fov.toFixed(v.fov < 10 ? 1 : 0) + "°"} · centre alt ${c.alt.toFixed(0)}° az ${c.az.toFixed(0)}°`);
   },
   _bind(app) {
     const c = app.canvas, st = app.state, ptrs = new Map();
