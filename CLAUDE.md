@@ -37,6 +37,7 @@ src/
             geomag.js + geomag-coeffs.js (WMM2025 declination)  darksky.js (Bortle estimate + dark-spot search over data/lightpollution.png)
   render/   sky.js (Canvas 2D: stars, lines, DSOs, bodies, constellation art, AR guide, labels, picking)
             skygl.js (WebGL: atmosphere + photographic Milky Way texture, same projection as the 2D layer)
+  engine/satellites.js + workers/satworker.js (SGP4 via vendored satellite.js, TLE snapshot data/tle.json refreshed daily by the workflow)
   sensors/  gps.js  imu.js (iOS compass + Android absolute orientation → look vector)  camera.js
   modes/    planetarium.js  ar.js  planner.js  framing.js  darksky.js   (enter/exit/frame/hud contract)
   ui/       panels.js (search, location, time, settings sheets + object card)  app.css

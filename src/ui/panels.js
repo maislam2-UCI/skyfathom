@@ -71,8 +71,12 @@ export function initPanels(app) {
         rows.push(["Angular size", b.diamDeg ? `${(b.diamDeg * 60).toFixed(1)}′` : "—"], ...riseSetRows(sel.ref));
       } else if (sel.kind === "constellation") {
         sub = `Constellation · ${sel.ref.abbr} · ${sel.ref.starCount} line stars`; rows = [];
+      } else if (sel.kind === "sat") {
+        const p = app.sats.positions.get(sel.index);
+        sub = `Satellite · ${app.sats.group(sel.index)} · orbital elements ${app.sats.fetched ? app.sats.fetched.slice(0, 10) : ""}`;
+        rows = p ? [["Status", p.el < 0 ? "below the horizon" : p.sunlit ? (app.sunAlt < -6 ? "sunlit — visible to the eye" : "sunlit, but daylight") : "in Earth's shadow — invisible"], ["Height", `${p.altKm.toFixed(0)} km`], ["Distance", `${p.rangeKm.toFixed(0)} km`], ["Speed", `${p.velKmS.toFixed(2)} km/s`], ["Brightness", p.sunlit ? `≈ mag ${p.mag.toFixed(1)}` : "—"]] : [["Status", "computing…"]];
       }
-      const c = rd ? E.constellationAt(rd.ra, rd.dec) : null;
+      const c = rd && sel.kind !== "sat" ? E.constellationAt(rd.ra, rd.dec) : null;
       const below = aa.alt < 0;
       if (app.modeName === "ar") { // compact card so the pointing guide stays visible
         box.classList.add("compact");
@@ -92,10 +96,11 @@ export function initPanels(app) {
         </div>
         <div class="row"><button class="btn primary" id="info-center">${app.modeName === "ar" ? "Where is it?" : "Centre"}</button>
           ${app.modeName === "ar" ? `<button class="btn" id="info-align">Align compass here</button>` : ""}
-          <button class="btn" id="info-frame">Plot tonight</button></div>`;
+          ${sel.kind === "sat" ? `<button class="btn" id="info-passes">Next passes</button>` : `<button class="btn" id="info-frame">Plot tonight</button>`}</div>`;
       $("#info-close").onclick = () => app.select(null);
       $("#info-center").onclick = () => app.centerOn(sel);
-      $("#info-frame").onclick = () => app.setMode("framing");
+      const fr = $("#info-frame"); if (fr) fr.onclick = () => app.setMode("framing");
+      const ps = $("#info-passes"); if (ps) ps.onclick = () => { app.setMode("planner"); setTimeout(() => $("#pl-sats")?.scrollIntoView({ block: "start", behavior: "smooth" }), 400); };
       const al = $("#info-align"); if (al) al.onclick = () => { if (!ar.alignTo(app, sel)) st.toast("Point the crosshair at this object first, then tap Align.", 3000); };
     },
 
@@ -105,11 +110,12 @@ export function initPanels(app) {
       const q = $("#q"), res = $("#q-res"); q.focus();
       let timer;
       q.oninput = () => { clearTimeout(timer); timer = setTimeout(async () => {
-        let items = app.catalog.search(q.value);
+        let items = [...app.sats.search(q.value, 4), ...app.catalog.search(q.value)];
         if (!items.length && q.value.length > 3) items = await app.catalog.searchFull(q.value);
         res.innerHTML = items.map((it, i) => `<button data-i="${i}"><span>${h(it.label)}</span><small>${h(it.sub)}</small></button>`).join("") || (q.value ? "<p class='muted'>No match.</p>" : "");
         res.querySelectorAll("button").forEach(b => b.onclick = () => { const it = items[+b.dataset.i]; ui.close();
-          if (it.kind === "body") app.select({ kind: "body", ref: it.ref }, { center: true });
+          if (it.kind === "sat") app.select({ kind: "sat", index: it.index }, { center: true });
+          else if (it.kind === "body") app.select({ kind: "body", ref: it.ref }, { center: true });
           else if (it.kind === "constellation") app.select({ kind: "constellation", ref: it.ref }, { center: true });
           else app.select({ kind: it.kind, set: it.set, index: it.index }, { center: true }); });
       }, 120); };
@@ -152,7 +158,7 @@ export function initPanels(app) {
       const S = st.settings;
       const tog = (k, label, hint = "") => `<label class="toggle"><span>${label}${hint ? `<br><span class="muted">${hint}</span>` : ""}</span><input type="checkbox" data-k="${k}" ${S[k] ? "checked" : ""}></label>`;
       inner.insertAdjacentHTML("beforeend", `<h2>Settings</h2>
-        <h3>Display</h3>${tog("nightMode", "Night vision (red)", "keeps your dark adaptation")}${tog("constellationLines", "Constellation lines")}${tog("constellationLabels", "Constellation names")}${tog("boundaries", "Constellation boundaries")}${tog("starLabels", "Star names")}${tog("showDso", "Deep-sky objects")}${tog("dsoLabels", "Deep-sky labels")}${tog("milkyWay", "Milky Way (photographic, ESO/S. Brunier)")}${tog("constellationArt", "Constellation artwork")}
+        <h3>Display</h3>${tog("nightMode", "Night vision (red)", "keeps your dark adaptation")}${tog("constellationLines", "Constellation lines")}${tog("constellationLabels", "Constellation names")}${tog("boundaries", "Constellation boundaries")}${tog("starLabels", "Star names")}${tog("showDso", "Deep-sky objects")}${tog("dsoLabels", "Deep-sky labels")}${tog("milkyWay", "Milky Way (photographic, ESO/S. Brunier)")}${tog("constellationArt", "Constellation artwork")}${tog("satellites", "Satellites (ISS, Tiangong, Starlink…)")}
         <div class="field"><label>Artwork opacity <span id="s-ao-v">${Math.round((S.artOpacity ?? 1) * 100)}%</span></label><input id="s-ao" type="range" min="0.2" max="2" step="0.1" value="${S.artOpacity ?? 1}"></div>${tog("ecliptic", "Ecliptic")}${tog("altAzGrid", "Alt/az grid")}${tog("showMeridian", "Meridian")}${tog("eqGrid", "RA/Dec grid")}${tog("belowHorizon", "Show sky below the horizon")}
         <div class="field"><label>Label density <span id="s-ld-v">${S.labelDensity.toFixed(1)}×</span></label><input id="s-ld" type="range" min="0.5" max="2" step="0.1" value="${S.labelDensity}"></div>
         <h3>AR &amp; compass</h3>${tog("applyDeclination", "Correct compass with magnetic declination", `here ${app.declination >= 0 ? "+" : ""}${app.declination.toFixed(1)}° · ${WMM.name}`)}

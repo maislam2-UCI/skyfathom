@@ -2,6 +2,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "23 5 * * *"   # daily: refresh satellite orbital elements
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +25,8 @@ jobs:
           node-version: 22
       - name: Run engine tests
         run: npm test
+      - name: Refresh satellite TLEs (CelesTrak)
+        run: node tools/fetch-tle.mjs || echo "TLE refresh failed; shipping the committed snapshot"
       - name: Stamp service-worker cache version with the commit
         run: |
           sed -i "s/const VERSION = \"skyfathom-v[^\"]*\"/const VERSION = \"skyfathom-${GITHUB_SHA::8}\"/" src/sw.js

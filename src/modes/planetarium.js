@@ -24,7 +24,15 @@ export default {
       if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), fov: st.view.fov }; dragStart = null; } };
     const onMove = (e) => {
       if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, [e.clientX, e.clientY]);
-      if (ptrs.size === 2 && pinch0) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); this._zoomTo(app, pinch0.fov * pinch0.d / Math.max(10, d)); moved = true; return; }
+      if (ptrs.size === 2 && pinch0) {
+        const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, r = c.getBoundingClientRect();
+        const before = app.projector.unproject(mx - r.left, my - r.top);
+        this._zoomTo(app, pinch0.fov * pinch0.d / Math.max(10, d));
+        app.projector.setView(st.view); const after = app.projector.unproject(mx - r.left, my - r.top);
+        st.view.az = ((st.view.az + (before.az - after.az) + 540) % 360 + 360) % 360 - 180 + 180; st.view.alt = Math.max(-40, Math.min(89.5, st.view.alt + (before.alt - after.alt)));
+        moved = true; return;
+      }
       if (ptrs.size === 1 && dragStart) {
         const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
         if (Math.hypot(dx, dy) > 4) moved = true;
@@ -59,7 +67,7 @@ export default {
       }
       else if (ptrs.size === 1) { const [p] = [...ptrs.values()]; dragStart = { x: p[0], y: p[1], az: st.view.az, alt: st.view.alt }; }
     };
-    const onWheel = (e) => { e.preventDefault(); this._zoomTo(app, st.view.fov * (e.deltaY > 0 ? 1.12 : 0.89)); };
+    const onWheel = (e) => { e.preventDefault(); const target = Math.max(3, Math.min(150, (this._wheelTarget ?? st.view.fov) * (e.deltaY > 0 ? 1.15 : 0.87))); this._wheelTarget = target; app.animateView({ az: st.view.az, alt: st.view.alt, fov: target }, 180); clearTimeout(this._wheelT); this._wheelT = setTimeout(() => { this._wheelTarget = null; if (target < 50) app.catalog.loadFaint().then(() => app.requestRender()); }, 250); };
     c.addEventListener("pointerdown", onDown); c.addEventListener("pointermove", onMove); c.addEventListener("pointerup", onUp); c.addEventListener("pointercancel", onUp); c.addEventListener("wheel", onWheel, { passive: false });
     this._h = { onDown, onMove, onUp, onWheel };
   },

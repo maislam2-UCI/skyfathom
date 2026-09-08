@@ -45,6 +45,7 @@ export class SkyRenderer {
     if (S.showDso) this._dsos(sc);
     this._stars(sc);
     this._bodies(sc);
+    if (sc.settings.satellites !== false && sc.sats?.length) this._satellites(sc);
     this._horizon(sc);
     if (!sc.transparent) this._vignette();
     if (S.constellationLabels) this._constellationLabels(sc);
@@ -207,6 +208,7 @@ export class SkyRenderer {
     const sel = sc.selection; let tgt = null, name = "";
     if (sel && sel.kind !== "constellation") {
       if (sel.kind === "body") { const b = sc.bodies.find(b => b.name === sel.ref); if (b) tgt = horVec(b.alt, b.az); name = sel.ref; }
+      else if (sel.kind === "sat") { const s = sc.sats?.find(s => s.i === sel.index); if (s) tgt = horVec(s.el, s.az); name = (sc.selectionLabel || "").split(" ·")[0]; }
       else { const s = sel.set, i = sel.index; const h = P.eqToHor(s.x[i], s.y[i], s.z[i]); tgt = h; name = sc.selectionLabel || ""; }
     }
     let sep = null, locked = false, dirAng = 0, tgtBehind = false;
@@ -485,6 +487,32 @@ export class SkyRenderer {
     ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.stroke();
   }
 
+  // ---------- satellites: moving markers with short trails ----------
+  _satellites(sc) {
+    const { ctx } = this, P = sc.projector, out = [0, 0, 0], fov = P.view.fov;
+    const sel = sc.selection?.kind === "sat" ? sc.selection.index : -1;
+    for (const s of sc.sats) {
+      if (s.el < 0) continue;
+      const hl = sc.satHighlight(s.i), isSel = s.i === sel;
+      const bright = s.sunlit && s.mag < 4.5;
+      if (!hl && !isSel && !bright && fov > 60) continue;          // keep the wide view clean
+      if (!hl && !isSel && !s.sunlit && fov > 25) continue;        // eclipsed sats only when zoomed in
+      P.projectAltAz(s.el, s.az, out); if (!out[2]) continue;
+      const x = out[0], y = out[1];
+      if (x < -30 || x > this.w + 30 || y < -30 || y > this.h + 30) continue;
+      const tr = sc.satTrails.get(s.i);
+      if (tr && tr.length > 1 && (hl || isSel || fov < 60)) {
+        ctx.beginPath(); let pen = false;
+        for (const [, az, el] of tr) { const q = P.projectAltAz(el, az, [0, 0, 0]); if (!q[2]) { pen = false; continue; } if (!pen) { ctx.moveTo(q[0], q[1]); pen = true; } else ctx.lineTo(q[0], q[1]); }
+        ctx.strokeStyle = hl ? "rgba(125,255,179,0.45)" : "rgba(180,200,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]);
+      }
+      const r = hl ? 4.5 : 2.6, col = s.sunlit ? (hl ? "#7dffb3" : "#cfe0ff") : "rgba(150,160,190,0.6)";
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+      if (hl || isSel) { ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - r - 6, y); ctx.lineTo(x - r - 2, y); ctx.moveTo(x + r + 2, y); ctx.lineTo(x + r + 6, y); ctx.moveTo(x, y - r - 6); ctx.lineTo(x, y - r - 2); ctx.moveTo(x, y + r + 2); ctx.lineTo(x, y + r + 6); ctx.stroke(); }
+      this.hits.push({ x, y, r: Math.max(r, 9), kind: "sat", index: s.i, prio: hl ? -8 : 2 });
+      if (hl || isSel || (bright && fov < 60)) this.labels.push({ x: x + r + 4, y: y - r - 2, text: hl ? sc.satNames(s.i).split(" ·")[0] : sc.satNames(s.i), color: col, font: hl ? "600 12px system-ui" : "11px system-ui", prio: hl ? -8 : 3 });
+    }
+  }
   // ---------- horizon: ground gradient, hill silhouette, compass ticks, cardinal points ----------
   _horizon(sc) {
     const { ctx } = this, P = sc.projector, out = [0, 0, 0];
@@ -556,6 +584,7 @@ export class SkyRenderer {
     if (sel.kind === "constellation") return;
     let pos;
     if (sel.kind === "body") { const b = sc.bodies.find(b => b.name === sel.ref); if (!b) return; pos = P.projectAltAz(b.alt, b.az); }
+    else if (sel.kind === "sat") { const s = sc.sats?.find(s => s.i === sel.index); if (!s) return; pos = P.projectAltAz(s.el, s.az); }
     else { const s = sel.set, i = sel.index; pos = P.projectEq(s.x[i], s.y[i], s.z[i]); }
     if (!pos[2]) return;
     const t = performance.now() / 1000, R = 16 + 2 * Math.sin(t * 3), L = 6;

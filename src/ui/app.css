@@ -187,3 +187,15 @@ a.btn { text-decoration: none; display: inline-block; }
 #modes button span { font-size: 10.5px; }
 #ds-radius { padding: 6px 8px; font-size: 12px; }
 a.btn { color: var(--fg); } a.btn.primary { color: #041022; }
+
+/* ---------- smoothness & mobile fixes ---------- */
+button, a.btn, .chip, .icon { touch-action: manipulation; }          /* no 300 ms tap delay, no double-tap zoom */
+input, select { font-size: 16px; }                                    /* iOS Safari zooms into inputs smaller than 16px */
+#panel, #info { animation: rise .22s cubic-bezier(.2,.8,.2,1); will-change: transform, opacity; }
+#modes button { transition: color .18s, background .18s, transform .18s; }
+#modes button:active { transform: scale(.94); }
+#rail button:active { transform: scale(.92); }
+.list button { transition: background .12s; }
+#toast { animation: rise .2s cubic-bezier(.2,.8,.2,1); }
+#sky, #skygl { will-change: transform; }
+@media (prefers-reduced-motion: reduce) { #panel, #info, #toast, #sheet, .sheet-inner { animation: none; } }

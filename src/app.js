@@ -1,12 +1,13 @@
 // Entry point: state → sensors → engine → active mode → canvas. Modes and panels talk through `app`.
 import { createState, deviceTimeZone } from "./engine/state.js";
 import { Catalog } from "./engine/catalog.js";
-import { Projector, vecToAltAz, norm24 } from "./engine/transform.js";
+import { Projector, vecToAltAz, norm24, altAzToRaDec as altAzToRaDecLocal } from "./engine/transform.js";
 import * as E from "./engine/ephemeris.js";
 import { declination } from "./engine/geomag.js";
 import { SkyRenderer } from "./render/sky.js";
 import { SkyGL } from "./render/skygl.js";
 import { forecast } from "./weather.js";
+import { Satellites } from "./engine/satellites.js";
 import { initPanels } from "./ui/panels.js";
 import { getFix } from "./sensors/gps.js";
 import planetarium from "./modes/planetarium.js";
@@ -21,7 +22,7 @@ const PLANET_ARCSEC_1AU = { Mercury: 6.74, Venus: 16.92, Mars: 9.36, Jupiter: 19
 const $ = (s) => document.querySelector(s);
 
 const app = {
-  state: createState(), catalog: new Catalog(), projector: new Projector(), renderer: null,
+  state: createState(), catalog: new Catalog(), projector: new Projector(), renderer: null, sats: new Satellites(), satList: [],
   canvas: $("#sky"), video: $("#cam"), bodies: [], sunAlt: -30, lstH: 0, obs: null, mode: null, modeName: null,
   dirty: true, lastEphem: 0, lastObsKey: "", declination: 0,
   get now() { return this.state.now(); },
@@ -38,6 +39,7 @@ const app = {
     if (key === this.lastObsKey) return;
     this.lastObsKey = key; this.obs = E.makeObserver(o.lat, o.lon, o.altM || 0);
     this.declination = declination(o.lat, o.lon, this.now); this.lastEphem = 0; this.dirty = true;
+    if (this.sats.worker) this.sats.setObserver(o.lat, o.lon, o.altM || 0).then(() => this.sats.requestPositions(this.now));
   },
   /** Recompute Sun/Moon/planets (cheap; once per second or on demand). */
   updateEphemeris(force = false) {
@@ -55,23 +57,27 @@ const app = {
       return { name, alt: p.alt, az: p.az, ra: p.ra, dec: p.dec, distAu: p.distAu, mag: il.mag, phaseFraction: il.phaseFraction, diamDeg };
     });
     this.sunAlt = this.bodies[0].alt;
+    this.sats.requestPositions(t);
     this.projector.setSky(this.lstH, this.state.observer.lat); // keep alt/az readouts correct even before the next frame
     this.dirty = true;
   },
   /** Alt/az of any selection right now. */
   altAzOf(sel) {
     if (!sel) return null;
+    if (sel.kind === "sat") { const p = this.sats.positions.get(sel.index); return p ? { alt: p.el, az: p.az } : null; }
     if (sel.kind === "body") { const b = this.bodies.find(b => b.name === sel.ref); return b ? { alt: b.alt, az: b.az } : null; }
     let v;
     if (sel.kind === "constellation") v = sel.ref.centerDate; else { const s = sel.set, i = sel.index; v = [s.x[i], s.y[i], s.z[i]]; }
     return vecToAltAz(this.projector.eqToHor(v[0], v[1], v[2]));
   },
   raDecOf(sel) {
+    if (sel.kind === "sat") { const aa = this.altAzOf(sel); if (!aa) return null; const u = altAzToRaDecLocal(aa.alt, aa.az, this.state.observer.lat, this.state.observer.lon, this.now); return u; }
     if (sel.kind === "body") { const b = this.bodies.find(b => b.name === sel.ref); return b ? { ra: b.ra, dec: b.dec } : null; }
     if (sel.kind === "constellation") return this.catalog.raDecOfDate({ x: [sel.ref.centerDate[0]], y: [sel.ref.centerDate[1]], z: [sel.ref.centerDate[2]] }, 0);
     return this.catalog.raDecOfDate(sel.set, sel.index);
   },
   labelOf(sel) {
+    if (sel.kind === "sat") return this.sats.prettyName(sel.index);
     if (sel.kind === "body") return sel.ref; if (sel.kind === "constellation") return `${sel.ref.latin} (${sel.ref.name})`;
     if (sel.kind === "star") return this.catalog.starLabel(sel.index, sel.set); return this.catalog.dsoLabel(sel.set.rows[sel.index]);
   },
@@ -83,7 +89,7 @@ const app = {
   centerOn(sel) {
     const aa = this.altAzOf(sel); if (!aa) return;
     if (this.modeName === "ar") { this.state.toast(`Turn to ${compass(aa.az)} (az ${aa.az.toFixed(0)}°), ${aa.alt >= 0 ? "up" : "below horizon"} ${Math.abs(aa.alt).toFixed(0)}°`, 3500); return; }
-    const fov = sel.kind === "constellation" ? 70 : sel.kind === "dso" ? 25 : sel.kind === "body" ? 40 : Math.min(this.state.view.fov, 45);
+    const fov = sel.kind === "constellation" ? 70 : sel.kind === "dso" ? 25 : sel.kind === "body" ? 40 : sel.kind === "sat" ? 60 : Math.min(this.state.view.fov, 45);
     this.animateView({ az: aa.az, alt: Math.max(-10, aa.alt), fov }, 650);
     if (aa.alt < 0) this.state.toast("Below the horizon right now — use Tonight to see when it rises.", 3000);
   },
@@ -149,6 +155,7 @@ async function boot() {
   if (st.observer.source === "gps" || !localStorage.getItem("skyfathom.state.v1")) locateOnce(true);
   setTimeout(() => app.catalog.loadFaint().then(() => (app.dirty = true)), 4000);
   refreshBadges(); setInterval(refreshBadges, 60000);
+  app.sats.load("./data/tle.json").then(() => app.sats.setObserver(st.observer.lat, st.observer.lon, st.observer.altM || 0)).then(() => { app.sats.onPositions = (m) => { app.satList = [...m.values()]; app.dirty = true; }; app.sats.requestPositions(app.now); }).catch(e => report("satellites: " + e.message));
   const ua = navigator.userAgent, ios = /iPhone|iPad/.test(ua) && !window.navigator.standalone;
   if (ios && !localStorage.getItem("skyfathom.installHint")) { setTimeout(() => st.toast("Tip: Share → “Add to Home Screen” for full-screen use.", 6000), 3000); localStorage.setItem("skyfathom.installHint", "1"); }
 }
@@ -215,6 +222,7 @@ function loop() {
   P.setSky(app.lstH, st.observer.lat);
   P.setView(st.view);
   const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0, arGuide: false,
+    sats: app.satList, satTrails: app.sats.trails, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
     glBackground: !!app.gl?.ok, requestRender: () => app.requestRender(), selectionLabel: st.selection ? app.labelOf(st.selection) : "" };
   app.mode?.frame?.(app, scene);
   if (app.gl?.ok) {

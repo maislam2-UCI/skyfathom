@@ -101,6 +101,8 @@ export default {
       <div class="vis">${visRows}</div>
       <h3>Best deep-sky targets (Messier, &gt; 30° up in darkness)</h3>
       <div class="list" id="pl-targets">${targets.slice(0, 14).map(x => `<button data-dso="${x.i}"><span>${h(app.catalog.dsoLabel(x.o))} <small>${x.o.typeName}</small></span><small>mag ${x.o.mag ?? "?"} · ${x.maxAlt.toFixed(0)}° @ ${app.fmtTime(x.bestT)}</small></button>`).join("") || "<p class='muted'>Nothing reaches 30° during darkness.</p>"}</div>
+      <h3 id="pl-sats">Satellite passes tonight <span class="muted">(sunlit, ≥ 10° up, sky dark)</span></h3>
+      <div id="sat-passes"><p class="muted">Computing passes for ${app.sats.tles.length || "…"} satellites…</p></div>
       <h3>Cloud forecast <span class="muted" id="wx-src">(Open-Meteo)</span></h3>
       <div id="wx"><p class="muted">Loading…</p></div>
       <h3>Exposure &amp; framing · ${h(g.name)}</h3>
@@ -121,6 +123,29 @@ export default {
     panel.querySelectorAll("[data-body]").forEach(b => b.onclick = () => { app.setMode("planetarium"); app.select({ kind: "body", ref: b.dataset.body }, { center: true }); });
     panel.querySelectorAll("[data-dso]").forEach(b => b.onclick = () => { app.setMode("planetarium"); app.select({ kind: "dso", set: d, index: +b.dataset.dso }, { center: true }); });
     this._weather(app, tw);
+    this._passes(app, tw);
+  },
+  async _passes(app, tw) {
+    const el = $("#sat-passes"); if (!el) return;
+    if (!app.sats.ready) { el.innerHTML = "<p class='muted'>Satellite data not ready yet — reopen Tonight in a moment.</p>"; return; }
+    const start = Math.min(app.now, (tw.sunset ?? tw.anchor).getTime() - 3600000), end = (tw.sunrise ?? new Date(start + 14 * 3600000)).getTime() + 3600000;
+    try {
+      const passes = await app.sats.passes(start, end, 10);
+      const iss = passes.filter(p => app.sats.isHighlight(p.i)), bright = passes.filter(p => !app.sats.isHighlight(p.i) && p.bestMag <= 4.0).slice(0, 12), starlink = passes.filter(p => p.group === "starlink" && p.bestMag <= 5).slice(0, 8);
+      const row = (p) => `<button data-pass="${p.i}" data-t="${p.visMaxT ?? p.maxT}"><span><b>${h(app.sats.prettyName(p.i).split(" ·")[0])}</b> <small>${p.group}</small><br><small>${app.fmtTime(p.visibleFrom ?? p.rise)} → ${app.fmtTime(p.visibleTo ?? p.set)} · highest ${(p.visMaxEl ?? p.maxEl).toFixed(0)}° ${compass(p.visMaxAz ?? p.maxAz)} at ${app.fmtTime(p.visMaxT ?? p.maxT)} · ${compass(p.riseAz)} → ${compass(p.setAz)} · mag ${p.bestMag.toFixed(1)}</small></span><small>Show</small></button>`;
+      const list = [...iss, ...bright.filter(p => !iss.includes(p))];
+      el.innerHTML = (list.length ? `<div class="list">${list.map(row).join("")}</div>` : "<p class='muted'>No bright satellite pass tonight (ISS, Tiangong, Hubble and the 150 brightest objects checked).</p>") +
+        (starlink.length ? `<h3>Starlink trains</h3><div class="list">${starlink.map(row).join("")}</div>` : "") +
+        `<p class="muted">Orbital elements from CelesTrak, snapshot ${app.sats.fetched ? app.sats.fetched.slice(0, 10) : ""}; times good to about a minute for the next few days.</p>`;
+      el.querySelectorAll("[data-pass]").forEach(b => b.onclick = () => {
+        const t = +b.dataset.t, i = +b.dataset.pass;
+        app.state.time = { live: true, offsetMs: t - Date.now(), epoch: t }; app.updateEphemeris(true); app.state.emit();
+        app.sats.requestPositions(t);
+        app.setMode("planetarium");
+        setTimeout(() => app.select({ kind: "sat", index: i }, { center: true }), 500);
+        app.state.toast("Time set to the pass — tap the time chip and “Live now” to come back.", 4000);
+      });
+    } catch (e) { el.innerHTML = `<p class="muted">Pass prediction failed: ${h(e.message)}</p>`; }
   },
   async _weather(app, tw) {
     const el = $("#wx"); if (!el) return;
