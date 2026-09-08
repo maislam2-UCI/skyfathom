@@ -85,6 +85,7 @@ export default {
     app.ripple(x, y);
     const hit = app.renderer.pick(x, y, 24);
     if (hit?.kind === "gc") { app.state.toast("Milky Way core — the galactic centre in Sagittarius. Best photographed when it is high in a moonless sky (see Tonight).", 4500); return; }
+    if (hit?.kind === "moon") { app.select({ kind: "moon", ref: hit.ref }); return; }
     if (hit) { app.select(hit.kind === "body" ? { kind: "body", ref: hit.ref } : { kind: hit.kind, set: hit.set, index: hit.index }); return; }
     // fall back to a catalog search around the tapped direction (faint stars, small DSOs)
     const u = app.projector.unproject(x, y), radius = Math.max(0.3, 24 / app.projector.pxPerDeg);

@@ -4,6 +4,7 @@ import * as E from "../engine/ephemeris.js";
 import { WMM } from "../engine/geomag.js";
 import ar from "../modes/ar.js";
 import { moonSvg } from "../modes/planner.js";
+import { FACTS, distances, galileanMoons, MOON_RADIUS_KM } from "../engine/planets.js";
 import { APP_VERSION } from "../app.js";
 
 const $ = (s) => document.querySelector(s);
@@ -69,14 +70,26 @@ export function initPanels(app) {
         if (sel.ref === "Moon") { const m = E.moonInfo(obs, t); rows.push(["Phase", `${m.name} · ${m.ageDays.toFixed(1)} d`]); title = `${moonSvg(m.phaseAngle, m.illumination, 28)} Moon`; }
         if (sel.ref !== "Sun" && sel.ref !== "Moon") { const e = E.elongation(sel.ref, t); rows.push(["Elongation", `${e.elongation.toFixed(0)}° (${e.visibility})`]); }
         rows.push(["Angular size", b.diamDeg ? `${(b.diamDeg * 60).toFixed(1)}′` : "—"], ...riseSetRows(sel.ref));
+        const dst = distances(sel.ref, t, b.distAu), F = FACTS[sel.ref];
+        if (sel.ref !== "Moon") rows.splice(1, 1, ["Distance from Earth", `${dst.geoAu.toFixed(3)} AU · ${Math.round(dst.geoKm / 1e6)} million km · light ${dst.light}`]);
+        if (dst.helioAu != null) rows.push(["Distance from Sun", `${dst.helioAu.toFixed(3)} AU`]);
+        if (F) rows.push(["Type", F.kind], ["Diameter", `${F.diameterKm.toLocaleString()} km (${(F.diameterKm / 12742).toFixed(2)}× Earth)`], ["Gravity", `${F.gravity} m/s²`], ["Day / year", `${F.day} · ${F.year}`], ["Moons", F.moonCount ? `${F.moonCount}${F.moons.length ? " · " + F.moons.join(", ") : ""}` : "none"]);
+        if (sel.ref === "Jupiter") { try { const jm = galileanMoons(t); const R2D = 180 / Math.PI; rows.push(["Galilean moons now", jm.map(mo => { const ang = Math.hypot(mo.v[0], mo.v[1], mo.v[2]) / b.distAu * R2D * 60; return `${mo.name} ${ang.toFixed(1)}′`; }).join(" · ") + " from Jupiter (shown on the map when zoomed in)"]); } catch { /* ignore */ } }
+        if (F?.note) rows.push(["Note", F.note]);
       } else if (sel.kind === "constellation") {
         sub = `Constellation · ${sel.ref.abbr} · ${sel.ref.starCount} line stars`; rows = [];
+      } else if (sel.kind === "moon") {
+        const j = app.bodies.find(b => b.name === "Jupiter"); let mo = null; try { mo = galileanMoons(t).find(m => m.name === sel.ref); } catch { /* ignore */ }
+        sub = "Moon of Jupiter (Galilean)";
+        const km = mo ? Math.hypot(...mo.v) * 149597870.7 : null;
+        const info = { Io: ["3,643 km", "1.77 d", "the most volcanic world in the Solar System"], Europa: ["3,122 km", "3.55 d", "ice shell over a global ocean"], Ganymede: ["5,268 km", "7.15 d", "largest moon in the Solar System, bigger than Mercury"], Callisto: ["4,821 km", "16.7 d", "ancient, heavily cratered surface"] }[sel.ref];
+        rows = [["Diameter", info[0]], ["Orbital period", info[1]], ["Distance from Jupiter now", km ? `${Math.round(km / 1000).toLocaleString()},000 km (${(km / 71492).toFixed(1)} Jupiter radii)` : "—"], ["Distance from Earth", j ? `${j.distAu.toFixed(3)} AU` : "—"], ["Note", info[2]]];
       } else if (sel.kind === "sat") {
         const p = app.sats.positions.get(sel.index);
         sub = `Satellite · ${app.sats.group(sel.index)} · orbital elements ${app.sats.fetched ? app.sats.fetched.slice(0, 10) : ""}`;
         rows = p ? [["Status", p.el < 0 ? "below the horizon" : p.sunlit ? (app.sunAlt < -6 ? "sunlit — visible to the eye" : "sunlit, but daylight") : "in Earth's shadow — invisible"], ["Height", `${p.altKm.toFixed(0)} km`], ["Distance", `${p.rangeKm.toFixed(0)} km`], ["Speed", `${p.velKmS.toFixed(2)} km/s`], ["Brightness", p.sunlit ? `≈ mag ${p.mag.toFixed(1)}` : "—"]] : [["Status", "computing…"]];
       }
-      const c = rd && sel.kind !== "sat" ? E.constellationAt(rd.ra, rd.dec) : null;
+      const c = rd && sel.kind !== "sat" && sel.kind !== "moon" ? E.constellationAt(rd.ra, rd.dec) : null;
       const below = aa.alt < 0;
       if (app.modeName === "ar") { // compact card so the pointing guide stays visible
         box.classList.add("compact");

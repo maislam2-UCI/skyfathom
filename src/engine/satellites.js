@@ -16,6 +16,7 @@ export class Satellites {
         for (const k of [...this.trails.keys()]) if (!next.has(k)) this.trails.delete(k);
         this.positions = next; this.onPositions?.(next);
       } else if (m.type === "passes") { const r = this._pending.get("passes"); this._pending.delete("passes"); r?.(m.passes); }
+      else if (m.type === "track") { const r = this._pending.get("track" + m.i); this._pending.delete("track" + m.i); r?.(m.pts); }
     };
     return this;
   }
@@ -31,6 +32,7 @@ export class Satellites {
     if (this._pending.has("passes")) return new Promise(res => { const prev = this._pending.get("passes"); this._pending.set("passes", (p) => { prev(p); res(p); }); });
     return new Promise(res => { this._pending.set("passes", res); this.worker.postMessage({ type: "passes", start: startMs, end: endMs, minEl }); });
   }
+  track(i, startMs, endMs, stepMs = 60000) { if (!this.ready) return Promise.resolve([]); return new Promise(res => { this._pending.set("track" + i, res); this.worker.postMessage({ type: "track", i, start: startMs, end: endMs, step: stepMs }); }); }
   name(i) { return this.tles[i]?.n ?? "Satellite"; }
   group(i) { return this.tles[i]?.g ?? ""; }
   isHighlight(i) { const n = this.tles[i]?.n ?? ""; return /^ISS \(ZARYA\)|^CSS \(TIANHE\)|^HST$/.test(n); }

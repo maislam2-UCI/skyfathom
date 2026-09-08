@@ -5,8 +5,9 @@
 // ring drawn from the ephemeris ring tilt. Textures: Solar System Scope (CC BY 4.0), downsampled to 1024×512.
 const TEX = {
   Moon: "planet-moon.jpg", Mercury: "planet-mercury.jpg", Venus: "planet-venus.jpg", Mars: "planet-mars.jpg",
-  Jupiter: "planet-jupiter.jpg", Saturn: "planet-saturn.jpg", Uranus: "planet-uranus.jpg", Neptune: "planet-neptune.jpg", Sun: "planet-sun.jpg",
+  Jupiter: "planet-jupiter.jpg", Saturn: "planet-saturn.jpg", Uranus: "planet-uranus.jpg", Neptune: "planet-neptune.jpg", Sun: "planet-sun.jpg", Earth: "planet-earth.jpg",
 };
+const NIGHT = { Earth: "planet-earth-night.jpg" };
 const RING = "planet-saturn-ring.png";
 // IAU 2009 rotation elements: pole RA/Dec (J2000, deg) and prime meridian W = W0 + Wd · d (d = days from J2000)
 export const ROTATION = {
@@ -20,7 +21,7 @@ export const ROTATION = {
   Sun: { ra: 286.13, dec: 63.87, w0: 84.18, wd: 14.1844 },
   Moon: { ra: 270.0, dec: 66.54, w0: 38.32, wd: 13.17635815 },
 };
-const ATMO = { Venus: "rgba(255,240,200,0.5)", Mars: "rgba(255,170,120,0.25)", Uranus: "rgba(160,230,230,0.35)", Neptune: "rgba(120,160,255,0.4)", Jupiter: "rgba(255,220,180,0.2)", Saturn: "rgba(255,230,180,0.2)", Sun: "rgba(255,200,120,0.6)" };
+const ATMO = { Earth: "rgba(120,180,255,0.55)", Venus: "rgba(255,240,200,0.5)", Mars: "rgba(255,170,120,0.25)", Uranus: "rgba(160,230,230,0.35)", Neptune: "rgba(120,160,255,0.4)", Jupiter: "rgba(255,220,180,0.2)", Saturn: "rgba(255,230,180,0.2)", Sun: "rgba(255,200,120,0.6)" };
 
 export class GlobeRenderer {
   constructor(base = "./assets/") { this.base = base; this.tex = new Map(); this.data = new Map(); this.cache = new Map(); this.loading = new Set(); }
@@ -44,6 +45,7 @@ export class GlobeRenderer {
    */
   sprite(p) {
     const tex = this._texture(TEX[p.body]); if (!tex) return null;
+    const night = NIGHT[p.body] ? this._texture(NIGHT[p.body]) : null; if (NIGHT[p.body] && !night) return null;
     const ring = p.body === "Saturn" ? this._texture(RING) : null; if (p.body === "Saturn" && !ring) return null;
     const r = Math.round(p.r);
     const key = `${p.body}|${r}|${p.light.map(v => v.toFixed(2))}|${p.pole.map(v => v.toFixed(2))}|${p.cm.toFixed(0)}`;
@@ -75,6 +77,7 @@ export class GlobeRenderer {
       const amb = p.body === "Moon" ? 0.045 : 0.03;
       const k = lit ? limb : (amb + (1 - amb) * Math.pow(shade, 0.9)) * limb;
       let R = td[ti] * k, G = td[ti + 1] * k, B = td[ti + 2] * k;
+      if (night) { const nd = night.px; const dark = Math.max(0, Math.min(1, (0.08 - shade) / 0.16)); const nti = (Math.min(night.h - 1, (v * night.h) | 0) * night.w + Math.min(night.w - 1, (u * night.w) | 0)) * 4; R += nd[nti] * 1.3 * dark * limb; G += nd[nti + 1] * 1.1 * dark * limb; B += nd[nti + 2] * 0.8 * dark * limb; R = Math.min(255, R); G = Math.min(255, G); B = Math.min(255, B); }
       if (ringFront && ringFront.shadow) { /* reserved for ring shadow */ }
       // anti-aliased edge
       const edge = Math.min(1, (1 - Math.sqrt(rr)) * r * 1.5);
@@ -118,5 +121,13 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const scale = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
 const norm = (v) => { const n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / n, v[1] / n, v[2] / n]; };
 const clamp = (x) => Math.max(-1, Math.min(1, x));
+/** Screen position of a surface point (lat, lon in deg) on a globe drawn with pole P (screen frame) and central meridian cm; null if on the far side. */
+export function surfacePoint(latDeg, lonDeg, P, cm, r) {
+  const Pn = norm(P); let X = [1, 0, 0]; X = norm(sub(X, scale(Pn, dot(X, Pn)))); const Y = cross(Pn, X);
+  const lat = latDeg * Math.PI / 180, lon = lonDeg * Math.PI / 180 + cm * Math.PI / 180;
+  // inverse of the sprite mapping: n = cos(lat)(cos(lon) X + sin(lon) Y) + sin(lat) P
+  const n = [0, 1, 2].map(i => Math.cos(lat) * (Math.cos(lon) * X[i] + Math.sin(lon) * Y[i]) + Math.sin(lat) * Pn[i]);
+  return { x: n[0] * r, y: -n[1] * r, z: n[2], visible: n[2] > 0 };
+}
 /** Central-meridian longitude W (deg) at time t for a body. */
 export function centralMeridian(body, epochMs) { const R = ROTATION[body]; if (!R) return 0; const d = (epochMs - Date.UTC(2000, 0, 1, 12)) / 86400000; return ((R.w0 + R.wd * d) % 360 + 360) % 360; }

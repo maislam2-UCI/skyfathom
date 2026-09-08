@@ -9,11 +9,11 @@ const DATA_VERSION = "skyfathom-data-v2";
 const SHELL = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./ui/app.css", "./ui/panels.js",
   "./engine/state.js", "./engine/transform.js", "./engine/ephemeris.js", "./engine/catalog.js", "./engine/geomag.js", "./engine/geomag-coeffs.js", "./engine/darksky.js",
   "./render/sky.js", "./render/skygl.js", "./render/globe.js", "./sensors/gps.js", "./sensors/imu.js", "./sensors/camera.js", "./weather.js",
-  "./modes/planetarium.js", "./modes/ar.js", "./modes/planner.js", "./modes/framing.js", "./modes/darksky.js", "./engine/satellites.js", "./engine/meteors.js", "./engine/events.js", "./engine/alerts.js", "./engine/skyquality.js", "./engine/aurora.js", "./ui/ics.js", "./workers/satworker.js", "./data/tle.json"];
+  "./modes/planetarium.js", "./modes/ar.js", "./modes/planner.js", "./modes/framing.js", "./modes/darksky.js", "./engine/satellites.js", "./engine/meteors.js", "./engine/events.js", "./engine/alerts.js", "./engine/skyquality.js", "./engine/aurora.js", "./engine/planets.js", "./ui/ics.js", "./workers/satworker.js", "./data/tle.json"];
 const DATA = ["./vendor/astronomy.browser.min.js", "./vendor/satellite.min.js", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png", "./assets/milkyway.jpg",
   "./data/stars.json", "./data/constellations.json", "./data/dso.json"];
 const DATA_LAZY = ["./data/stars-faint.json", "./data/dso-full.json", "./data/lightpollution.png", "./data/darksites.json",
-  "./assets/planet-moon.jpg", "./assets/planet-mercury.jpg", "./assets/planet-venus.jpg", "./assets/planet-mars.jpg", "./assets/planet-jupiter.jpg", "./assets/planet-saturn.jpg", "./assets/planet-saturn-ring.png", "./assets/planet-uranus.jpg", "./assets/planet-neptune.jpg", "./assets/planet-sun.jpg"];
+  "./assets/planet-moon.jpg", "./assets/planet-mercury.jpg", "./assets/planet-venus.jpg", "./assets/planet-mars.jpg", "./assets/planet-jupiter.jpg", "./assets/planet-saturn.jpg", "./assets/planet-saturn-ring.png", "./assets/planet-uranus.jpg", "./assets/planet-neptune.jpg", "./assets/planet-sun.jpg", "./assets/planet-earth.jpg", "./assets/planet-earth-night.jpg"];
 const isDataUrl = (p) => (p.includes("/data/") && !p.endsWith("/tle.json")) || p.includes("/vendor/") || p.includes("/assets/");
 
 self.addEventListener("install", (e) => {

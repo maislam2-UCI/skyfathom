@@ -29,7 +29,7 @@ function look(sat, date, gmst, sun) {
   const ecf = S.eciToEcf(pv.position, gmst), la = S.ecfToLookAngles(obsGd, ecf);
   const gd = S.eciToGeodetic(pv.position, gmst);
   const v = pv.velocity ? Math.hypot(pv.velocity.x, pv.velocity.y, pv.velocity.z) : 0;
-  return { az: la.azimuth * R2D, el: la.elevation * R2D, rangeKm: la.rangeSat, sunlit: sun ? isSunlit(pv.position, sun) : true, altKm: gd.height, velKmS: v };
+  return { az: la.azimuth * R2D, el: la.elevation * R2D, rangeKm: la.rangeSat, sunlit: sun ? isSunlit(pv.position, sun) : true, altKm: gd.height, velKmS: v, lat: gd.latitude * R2D, lon: gd.longitude * R2D };
 }
 function magnitude(sat, rangeKm, sunlit) {
   if (!sunlit) return 99;
@@ -48,6 +48,11 @@ self.onmessage = (e) => {
     const date = new Date(m.t), gmst = S.gstime(date), sun = sunEci(date), out = [];
     for (const s of sats) { const l = look(s, date, gmst, sun); if (l) out.push({ i: s.i, ...l, mag: magnitude(s, l.rangeKm, l.sunlit) }); }
     self.postMessage({ type: "positions", t: m.t, sats: out, sunEl: sunElevation(date, gmst, sun) }); return;
+  }
+  if (m.type === "track") {
+    const s = sats.find(x => x.i === m.i); const pts = [];
+    if (s) for (let t = m.start; t <= m.end; t += m.step || 60000) { const date = new Date(t), gmst = S.gstime(date); const l = look(s, date, gmst, null); if (l) pts.push([t, l.lat, l.lon, l.altKm]); }
+    self.postMessage({ type: "track", i: m.i, pts }); return;
   }
   if (m.type === "passes") {
     const step = 20000, minEl = m.minEl ?? 10, passes = [];

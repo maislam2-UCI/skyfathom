@@ -419,6 +419,25 @@ export class SkyRenderer {
   }
 
   // ---------- Sun, Moon, planets ----------
+  /** Io, Europa, Ganymede, Callisto at their real offsets from Jupiter (astronomy-engine JupiterMoons). */
+  _galilean(sc, jup, sx, sy, discR) {
+    const { ctx } = this, P = sc.projector, m = P.eqCam, R2D = 180 / Math.PI;
+    const sun = sc.bodies.find(b => b.name === "Sun");
+    for (const mo of sc.jupiterMoons) {
+      const v = mo.v, d = jup.distAu; // AU offsets relative to Jupiter in the equatorial frame
+      const ax = (m[0] * v[0] + m[1] * v[1] + m[2] * v[2]) / d, ay = (m[3] * v[0] + m[4] * v[1] + m[5] * v[2]) / d, az = -(m[6] * v[0] + m[7] * v[1] + m[8] * v[2]) / d;
+      const x = sx + ax * R2D * this.pxDeg, y = sy - ay * R2D * this.pxDeg;
+      const behind = az < 0 && Math.hypot(x - sx, y - sy) < discR;   // occulted by the planet
+      if (behind) continue;
+      const rad = Math.max(1.2, (({ Io: 1821, Europa: 1561, Ganymede: 2634, Callisto: 2410 })[mo.name] / 149597870.7 / d) * R2D * this.pxDeg);
+      ctx.fillStyle = mo.name === "Io" ? "#ffe9a8" : mo.name === "Europa" ? "#f2f0e6" : mo.name === "Ganymede" ? "#d9c9b0" : "#b9ada0";
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, TAU); ctx.fill();
+      if (rad > 3) { ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, rad, 0, TAU); ctx.stroke(); }
+      this.hits.push({ x, y, r: Math.max(rad, 8), kind: "moon", ref: mo.name, prio: -4 });
+      if (P.view.fov < 6) this.labels.push({ x: x + rad + 3, y: y - rad - 2, text: mo.name, color: "rgba(255,240,210,0.9)", font: "11px system-ui", prio: -4 });
+    }
+    void sun;
+  }
   /** equatorial-frame vector → screen frame (x right, y up, z toward the viewer) */
   _toScreen(P, v) { const m = P.eqCam; return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], -(m[6] * v[0] + m[7] * v[1] + m[8] * v[2])]; }
   _globe(sc, b, sx, sy, r) {
@@ -455,6 +474,7 @@ export class SkyRenderer {
       const discR = (b.diamDeg / 2) * this.pxDeg;
       if (sx < -discR - 80 || sx > this.w + discR + 80 || sy < -discR - 80 || sy > this.h + discR + 80) continue;
       const st = BODY_STYLE[b.name];
+      if (b.name === "Jupiter" && sc.jupiterMoons && P.view.fov < 15) this._galilean(sc, b, sx, sy, discR);
       if (discR >= (b.name === "Moon" || b.name === "Sun" ? 14 : 5) && discR < 4000 && this._globe(sc, b, sx, sy, discR)) {
         this.hits.push({ x: sx, y: sy, r: Math.max(discR, 12), kind: "body", ref: b.name, prio: -20 });
         this.labels.push({ x: sx + discR + 6, y: sy - discR, text: b.name, color: st.color, font: "600 12px system-ui", prio: -20 });
@@ -631,6 +651,7 @@ export class SkyRenderer {
     if (sel.kind === "constellation") return;
     let pos;
     if (sel.kind === "body") { const b = sc.bodies.find(b => b.name === sel.ref); if (!b) return; pos = P.projectAltAz(b.alt, b.az); }
+    else if (sel.kind === "moon") { const h = this.hits.find(h => h.kind === "moon" && h.ref === sel.ref); if (!h) return; pos = [h.x, h.y, 1]; }
     else if (sel.kind === "sat") { const s = sc.sats?.find(s => s.i === sel.index); if (!s) return; pos = P.projectAltAz(s.el, s.az); }
     else { const s = sel.set, i = sel.index; pos = P.projectEq(s.x[i], s.y[i], s.z[i]); }
     if (!pos[2]) return;

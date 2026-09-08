@@ -11,6 +11,7 @@ import { Satellites } from "./engine/satellites.js";
 import { activeShowers } from "./engine/meteors.js";
 import { LightPollution, describe as describeBortle } from "./engine/darksky.js";
 import { ROTATION, centralMeridian, GlobeRenderer } from "./render/globe.js";
+import { galileanMoons } from "./engine/planets.js";
 import { PassAlerts } from "./engine/alerts.js";
 import { Aurora, geomagneticLatitude, kpNeeded, kpScale } from "./engine/aurora.js";
 import { eqVec, precessionMatrix, mulMatVec } from "./engine/transform.js";
@@ -72,6 +73,7 @@ const app = {
       return { name, alt: p.alt, az: p.az, ra: p.ra, dec: p.dec, distAu: p.distAu, mag: il.mag, phaseFraction: il.phaseFraction, phaseAngle: il.phaseAngle, ringTilt: il.ringTilt, diamDeg, lightEq, poleEq, cm };
     });
     this.sunAlt = this.bodies[0].alt;
+    try { this.jupiterMoons = galileanMoons(t); } catch { this.jupiterMoons = null; }
     this.sats.requestPositions(t);
     if (!this._radiantsT || Math.abs(t - this._radiantsT) > 3600000) { this._radiantsT = t; const M = precessionMatrix(t); this.radiants = activeShowers(t).map(s => ({ name: s.name, id: s.id, zhr: s.zhr, v: mulMatVec(M, eqVec(s.ra, s.dec)), peak: s.peak })); }
     this.projector.setSky(this.lstH, this.state.observer.lat); // keep alt/az readouts correct even before the next frame
@@ -80,6 +82,7 @@ const app = {
   /** Alt/az of any selection right now. */
   altAzOf(sel) {
     if (!sel) return null;
+    if (sel.kind === "moon") return this.altAzOf({ kind: "body", ref: "Jupiter" });
     if (sel.kind === "sat") { const p = this.sats.positions.get(sel.index); return p ? { alt: p.el, az: p.az } : null; }
     if (sel.kind === "body") { const b = this.bodies.find(b => b.name === sel.ref); return b ? { alt: b.alt, az: b.az } : null; }
     let v;
@@ -87,12 +90,14 @@ const app = {
     return vecToAltAz(this.projector.eqToHor(v[0], v[1], v[2]));
   },
   raDecOf(sel) {
+    if (sel.kind === "moon") return this.raDecOf({ kind: "body", ref: "Jupiter" });
     if (sel.kind === "sat") { const aa = this.altAzOf(sel); if (!aa) return null; const u = altAzToRaDecLocal(aa.alt, aa.az, this.state.observer.lat, this.state.observer.lon, this.now); return u; }
     if (sel.kind === "body") { const b = this.bodies.find(b => b.name === sel.ref); return b ? { ra: b.ra, dec: b.dec } : null; }
     if (sel.kind === "constellation") return this.catalog.raDecOfDate({ x: [sel.ref.centerDate[0]], y: [sel.ref.centerDate[1]], z: [sel.ref.centerDate[2]] }, 0);
     return this.catalog.raDecOfDate(sel.set, sel.index);
   },
   labelOf(sel) {
+    if (sel.kind === "moon") return sel.ref;
     if (sel.kind === "sat") return this.sats.prettyName(sel.index);
     if (sel.kind === "body") return sel.ref; if (sel.kind === "constellation") return `${sel.ref.latin} (${sel.ref.name})`;
     if (sel.kind === "star") return this.catalog.starLabel(sel.index, sel.set); return this.catalog.dsoLabel(sel.set.rows[sel.index]);
@@ -272,7 +277,7 @@ function loop() {
   P.setSky(app.lstH, st.observer.lat);
   P.setView(st.view);
   const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0, arGuide: false,
-    radiants: app.radiants || [], sats: app.satList, satTrails: app.sats.trails, globes: app.globes, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
+    radiants: app.radiants || [], sats: app.satList, satTrails: app.sats.trails, globes: app.globes, jupiterMoons: app.jupiterMoons, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
     glBackground: !!app.gl?.ok, requestRender: () => app.requestRender(), selectionLabel: st.selection ? app.labelOf(st.selection) : "" };
   app.mode?.frame?.(app, scene);
   if (app.gl?.ok) {

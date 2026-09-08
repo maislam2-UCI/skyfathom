@@ -8,6 +8,8 @@ import { conjunctions, isStar } from "../engine/events.js";
 import { buildIcs, deliverIcs } from "../ui/ics.js";
 import { skyForecast, bestWindow, sqmFromBortle } from "../engine/skyquality.js";
 import { geomagneticLatitude, kpNeeded, kpScale, kpColor } from "../engine/aurora.js";
+import { surfacePoint } from "../render/globe.js";
+import { FACTS, distances } from "../engine/planets.js";
 
 const $ = (s) => document.querySelector(s);
 export function moonSvg(phaseAngle, illum, size = 44) {
@@ -22,15 +24,15 @@ const h = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "
 export default {
   name: "planner", view: "tonight", monthOffset: 0,
   enter(app) { $("#panel").hidden = false; this.render(app); this._t = setInterval(() => { if (app.state.time.live) this._refreshClock(app); }, 30000); },
-  exit(app) { $("#panel").hidden = true; clearInterval(this._t); },
+  exit(app) { $("#panel").hidden = true; clearInterval(this._t); clearInterval(this._earthTimer); },
   frame(app, sc) { sc.fovBox = null; },
   hud(app) { app.hud(`<b>Tonight</b> · ${app.state.observer.name} · ${app.fmtDate(app.now)}`); },
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
-  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
-  bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { this.view = b.dataset.view; this.render(app); }); },
+  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["earth", "Earth"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
+  bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { clearInterval(this._earthTimer); this.view = b.dataset.view; this.render(app); }); },
   render(app) {
-    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else if (this.view === "aurora") this._renderAurora(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
+    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else if (this.view === "aurora") this._renderAurora(app); else if (this.view === "earth") this._renderEarth(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
   },
   _render(app) {
     const st = app.state, obs = app.obs, t = app.now, panel = $("#panel");
@@ -173,6 +175,58 @@ export default {
         app.state.toast("Time set to the pass — tap the time chip and “Live now” to come back.", 4000);
       });
     } catch (e) { el.innerHTML = `<p class="muted">Pass prediction failed: ${h(e.message)}</p>`; }
+  },
+  // ---------------- Earth view ----------------
+  _renderEarth(app) {
+    const st = app.state, panel = $("#panel"), o = st.observer;
+    if (this._earthView == null) this._earthView = { lat: o.lat, lon: o.lon };
+    panel.innerHTML = `${this.tabs()}<h2>Earth · ${h(o.name)}</h2>
+      <canvas id="earth-cv" class="dsmap" width="800" height="800" style="aspect-ratio:1"></canvas>
+      <div class="ds-legend"><span><i style="background:#7fb2ff"></i>you</span><span><i style="background:#ffd166"></i>sub-solar point</span><span><i style="background:#ddd"></i>sub-lunar point</span><span><i style="background:#7dffb3"></i>ISS + next 90 min</span></div>
+      <p class="muted">Drag to turn the globe; double-tap to return to your location. Day side from NASA Blue Marble, night side from NASA Black Marble city lights; the terminator is computed for this moment.</p>
+      <div class="grid" id="earth-info"></div>
+      <h3>Solar System now <span class="muted">(distances from Earth)</span></h3>
+      <table><tr><th>Body</th><th class="num">AU</th><th class="num">million km</th><th>Light time</th><th class="num">Size</th></tr>
+      ${app.bodies.filter(b => b.name !== "Sun" || true).map(b => { const d = distances(b.name, app.now, b.distAu); return `<tr><td>${b.name}</td><td class="num">${d.geoAu.toFixed(3)}</td><td class="num">${(d.geoKm / 1e6).toFixed(b.name === "Moon" ? 3 : 1)}</td><td>${d.light}</td><td class="num">${(b.diamDeg * 3600).toFixed(b.diamDeg > 0.1 ? 0 : 1)}″</td></tr>`; }).join("")}</table>`;
+    const cv = $("#earth-cv"), ctx = cv.getContext("2d"), W = cv.width;
+    const draw = async () => {
+      const t = app.now, tm = Astronomy.MakeTime(new Date(t));
+      // sub-solar / sub-lunar points
+      const gst = Astronomy.SiderealTime(tm);
+      const sunEq = Astronomy.Equator("Sun", tm, app.obs, true, true), moonEq = Astronomy.Equator("Moon", tm, app.obs, true, true);
+      const subLon = (ra) => ((ra - gst) * 15 + 540) % 360 - 180;
+      const sun = { lat: sunEq.dec, lon: subLon(sunEq.ra) }, moon = { lat: moonEq.dec, lon: subLon(moonEq.ra) };
+      const r = W * 0.42, cx = W / 2, cy = W / 2, vlat = this._earthView.lat, vlon = this._earthView.lon;
+      // globe orientation: pole tilted by view latitude, central meridian at view longitude
+      const pole = [0, Math.cos(vlat * Math.PI / 180), Math.sin(vlat * Math.PI / 180) * -1];
+      // light direction from the sub-solar point
+      const sp = surfacePoint(sun.lat, sun.lon, pole, -vlon, 1); const light = [sp.x, -sp.y, sp.z];
+      const spr = app.globes.sprite({ body: "Earth", r, light, pole, cm: -vlon });
+      ctx.fillStyle = "#05070f"; ctx.fillRect(0, 0, W, W);
+      const g = ctx.createRadialGradient(cx, cy, r, cx, cy, r * 1.25); g.addColorStop(0, "rgba(120,180,255,0.35)"); g.addColorStop(1, "rgba(120,180,255,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r * 1.25, 0, Math.PI * 2); ctx.fill();
+      if (spr) ctx.drawImage(spr, cx - spr.width / 2, cy - spr.height / 2); else { ctx.fillStyle = "#123"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); app.globes.onLoad = () => { app.dirty = true; draw(); }; }
+      const mark = (lat, lon, color, label, size = 6) => { const p = surfacePoint(lat, lon, pole, -vlon, r); if (!p.visible) return; ctx.beginPath(); ctx.arc(cx + p.x, cy + p.y, size, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5; ctx.stroke(); ctx.font = "600 13px system-ui"; ctx.fillStyle = "#fff"; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.lineWidth = 3; ctx.strokeText(label, cx + p.x + 9, cy + p.y + 4); ctx.fillText(label, cx + p.x + 9, cy + p.y + 4); };
+      // ISS ground track
+      const issI = app.sats.tles.findIndex(x => x.n === "ISS (ZARYA)");
+      if (issI >= 0 && app.sats.ready) {
+        if (!this._issTrack || Math.abs(this._issTrack.t - t) > 120000) { this._issTrack = { t, pts: await app.sats.track(issI, t, t + 90 * 60000, 60000) }; }
+        ctx.strokeStyle = "rgba(125,255,179,0.8)"; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); let pen = false;
+        for (const [, la, lo] of this._issTrack.pts) { const p = surfacePoint(la, lo, pole, -vlon, r); if (!p.visible) { pen = false; continue; } if (!pen) { ctx.moveTo(cx + p.x, cy + p.y); pen = true; } else ctx.lineTo(cx + p.x, cy + p.y); }
+        ctx.stroke(); ctx.setLineDash([]);
+        const now = app.sats.positions.get(issI); if (now && now.lat != null) mark(now.lat, now.lon, "#7dffb3", "ISS", 5);
+      }
+      mark(sun.lat, sun.lon, "#ffd166", "Sun overhead", 7); mark(moon.lat, moon.lon, "#dddddd", "Moon overhead", 5); mark(o.lat, o.lon, "#7fb2ff", "You", 6);
+      const tw = E.twilight(app.obs, t);
+      const dayLen = tw.sunset && tw.sunrise ? 24 - (tw.sunrise - tw.sunset) / 3600000 : null;
+      $("#earth-info").innerHTML = `<div><b>Sun overhead at</b>${sun.lat.toFixed(1)}°, ${sun.lon.toFixed(1)}° (${sun.lat > 0 ? "northern" : "southern"} tropics)</div><div><b>Daylight here today</b>${dayLen != null ? dayLen.toFixed(1) + " h" : "—"}</div><div><b>Moon overhead at</b>${moon.lat.toFixed(1)}°, ${moon.lon.toFixed(1)}°</div><div><b>View centre</b>${vlat.toFixed(1)}°, ${vlon.toFixed(1)}°</div>`;
+    };
+    draw();
+    let drag = null;
+    cv.onpointerdown = (e) => { drag = [e.clientX, e.clientY, this._earthView.lat, this._earthView.lon]; cv.setPointerCapture(e.pointerId); };
+    cv.onpointermove = (e) => { if (!drag) return; const rct = cv.getBoundingClientRect(); const k = 180 / rct.width; this._earthView.lon = ((drag[3] - (e.clientX - drag[0]) * k + 540) % 360) - 180; this._earthView.lat = Math.max(-85, Math.min(85, drag[2] + (e.clientY - drag[1]) * k)); draw(); };
+    cv.onpointerup = cv.onpointercancel = () => { drag = null; };
+    cv.ondblclick = () => { this._earthView = { lat: o.lat, lon: o.lon }; draw(); };
+    this._earthTimer = setInterval(draw, 60000);
   },
   // ---------------- Aurora ----------------
   _renderAurora(app) {
