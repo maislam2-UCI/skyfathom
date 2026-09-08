@@ -3,6 +3,7 @@
 import * as E from "../engine/ephemeris.js";
 import { forecast, skyScore } from "../weather.js";
 import { lst as lstOf, norm24 } from "../engine/transform.js";
+import { activeShowers, upcomingPeaks, bestTimeTonight, limitingMagFromBortle } from "../engine/meteors.js";
 
 const $ = (s) => document.querySelector(s);
 export function moonSvg(phaseAngle, illum, size = 44) {
@@ -15,15 +16,17 @@ export function moonSvg(phaseAngle, illum, size = 44) {
 }
 const h = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 export default {
-  name: "planner",
+  name: "planner", view: "tonight", monthOffset: 0,
   enter(app) { $("#panel").hidden = false; this.render(app); this._t = setInterval(() => { if (app.state.time.live) this._refreshClock(app); }, 30000); },
   exit(app) { $("#panel").hidden = true; clearInterval(this._t); },
   frame(app, sc) { sc.fovBox = null; },
   hud(app) { app.hud(`<b>Tonight</b> · ${app.state.observer.name} · ${app.fmtDate(app.now)}`); },
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
+  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["moon", "Moon calendar"], ["meteors", "Meteor showers"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
+  bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { this.view = b.dataset.view; this.render(app); }); },
   render(app) {
-    try { this._render(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
+    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
   },
   _render(app) {
     const st = app.state, obs = app.obs, t = app.now, panel = $("#panel");
@@ -79,7 +82,7 @@ export default {
         <button class="btn small" data-body="${name}">Show</button></div>`;
     });
     const visRows = rowsVis.join("") + `<div class="vis-axis"><span>${app.fmtTime(nt0)}</span><span>${app.fmtTime(nt0 + 6 * 3600000)}</span><span>${app.fmtTime(nt0 + 12 * 3600000)}</span><span>${app.fmtTime(nt0 + 18 * 3600000)}</span><span>${app.fmtTime(nt0 + 24 * 3600000)}</span></div><div class="legend">Shaded = night, darker = full astronomical darkness, white line = now.</div>`;
-    panel.innerHTML = `
+    panel.innerHTML = `${this.tabs()}
       <div class="panel-head"><h2>Tonight · ${h(st.observer.name)}</h2><span class="muted" id="pl-now">${app.fmtTime(t)}</span></div>
       <div class="muted">${app.fmtDate(tw.anchor.getTime())} · night of ${darkHours ? darkHours.toFixed(1) + " h full darkness" : "no astronomical darkness"}</div>
       <h3>Sun &amp; twilight</h3>
@@ -146,6 +149,94 @@ export default {
         app.state.toast("Time set to the pass — tap the time chip and “Live now” to come back.", 4000);
       });
     } catch (e) { el.innerHTML = `<p class="muted">Pass prediction failed: ${h(e.message)}</p>`; }
+  },
+  // ---------------- Moon calendar ----------------
+  _renderMoon(app) {
+    const st = app.state, panel = $("#panel"), obs = app.obs, tz = app.tz();
+    const now = new Date(app.now);
+    const parts = (ms) => Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "numeric", day: "numeric" }).formatToParts(new Date(ms)).map(p => [p.type, +p.value]));
+    const today = parts(app.now);
+    let y = today.year, m = today.month - 1 + this.monthOffset; while (m < 0) { m += 12; y--; } while (m > 11) { m -= 12; y++; }
+    // local-noon timestamps for each day of the month (noon in the observer's tz ≈ 12h after local midnight)
+    const utcNoon = (yy, mm, dd) => { const guess = Date.UTC(yy, mm, dd, 12); const p = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).formatToParts(new Date(guess)).find(x => x.type === "hour"); const hh = +p.value % 24; return guess + (12 - hh) * 3600000; };
+    const days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const firstDow = new Date(Date.UTC(y, m, 1)).getUTCDay();
+    const monthName = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m, 1)));
+    const cells = [];
+    for (let i = 0; i < firstDow; i++) cells.push("<div class=\"cal-cell empty\"></div>");
+    const t0 = utcNoon(y, m, 1), t1 = utcNoon(y, m, days) + 43200000;
+    const quarters = []; let q = Astronomy.SearchMoonQuarter(Astronomy.MakeTime(new Date(t0 - 86400000)));
+    while (q && q.time.date.getTime() < t1) { quarters.push({ q: q.quarter, t: q.time.date.getTime() }); q = Astronomy.NextMoonQuarter(q); }
+    const QN = ["New Moon", "First Quarter", "Full Moon", "Last Quarter"], QI = ["🌑", "🌓", "🌕", "🌗"];
+    for (let d = 1; d <= days; d++) {
+      const tn = utcNoon(y, m, d) + 8 * 3600000; // ~20:00 local: what the evening Moon looks like
+      const tm = Astronomy.MakeTime(new Date(tn)), ph = Astronomy.MoonPhase(tm), ill = Astronomy.Illumination("Moon", tm).phase_fraction;
+      const qd = quarters.find(x => parts(x.t).day === d && parts(x.t).month === m + 1 && parts(x.t).year === y);
+      const isToday = d === today.day && m === today.month - 1 && y === today.year;
+      cells.push(`<button class="cal-cell ${isToday ? "today" : ""} ${qd ? "quarter" : ""}" data-t="${tn}"><span class="cal-day">${d}</span>${moonSvg(ph, ill, 30)}<span class="cal-ill">${qd ? QI[qd.q] : Math.round(ill * 100) + "%"}</span></button>`);
+    }
+    panel.innerHTML = `${this.tabs()}
+      <div class="panel-head"><button class="btn small" id="cal-prev">‹</button><h2>${monthName}</h2><button class="btn small" id="cal-next">›</button></div>
+      <div class="cal-head">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<span>${d}</span>`).join("")}</div>
+      <div class="cal-grid">${cells.join("")}</div>
+      <p class="muted">Each disc shows the evening Moon (about 8 PM local). Tap a day to plan that night.</p>
+      <h3>Phases this month</h3>
+      <div class="list">${quarters.map(x => `<button data-t="${x.t}"><span>${QI[x.q]} ${QN[x.q]}</span><small>${app.fmtTime(x.t, { date: true, weekday: true })}</small></button>`).join("")}</div>
+      <div id="cal-detail"></div>`;
+    $("#cal-prev").onclick = () => { this.monthOffset--; this.render(app); };
+    $("#cal-next").onclick = () => { this.monthOffset++; this.render(app); };
+    panel.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
+      const t = +b.dataset.t; const mi = E.moonInfo(obs, t), tw = E.twilight(obs, t);
+      const T = (d) => (d ? app.fmtTime(d.getTime()) : "—");
+      $("#cal-detail").innerHTML = `<div class="ds-card"><div class="title">${app.fmtDate(t)}</div><div class="moonrow">${moonSvg(mi.phaseAngle, mi.illumination, 44)}<div><b>${mi.name}</b><br><span class="muted">${Math.round(mi.illumination * 100)}% illuminated · ${mi.ageDays.toFixed(1)} days</span></div></div>
+        <div class="grid"><div><b>Moonrise</b>${T(mi.rise)}</div><div><b>Moonset</b>${T(mi.set)}</div><div><b>Sunset</b>${T(tw.sunset)}</div><div><b>Astro dark</b>${T(tw.astroDusk)} – ${T(tw.astroDawn)}</div></div>
+        <div class="row"><button class="btn primary" id="cal-plan">Plan this night</button></div></div>`;
+      $("#cal-plan").onclick = () => { st.time = { live: true, offsetMs: t - Date.now(), epoch: t }; app.updateEphemeris(true); st.emit(); this.view = "tonight"; this.render(app); };
+      $("#cal-detail").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  },
+  // ---------------- Meteor showers ----------------
+  _renderMeteors(app) {
+    const st = app.state, panel = $("#panel"), obs = app.obs, t = app.now;
+    const tw = E.twilight(obs, t);
+    const lm = limitingMagFromBortle(app.bortleHere ?? null);
+    const active = activeShowers(t).map(s => ({ ...s, tonight: bestTimeTonight(s, obs, tw, t, lm) })).sort((a, b) => (b.tonight?.ratePerHour ?? 0) - (a.tonight?.ratePerHour ?? 0));
+    const upcoming = upcomingPeaks(t).map(s => { const mi = Astronomy.Illumination("Moon", Astronomy.MakeTime(s.peak)).phase_fraction; return { ...s, moonIll: mi }; });
+    const moonTag = (ill) => ill < 0.3 ? "<span class=\"tag good\">dark Moon</span>" : ill < 0.7 ? "<span class=\"tag warn\">half Moon</span>" : "<span class=\"tag bad\">bright Moon</span>";
+    const card = (s) => {
+      const b = s.tonight; const daysToPeak = (s.peak.getTime() - t) / 86400000;
+      const when = Math.abs(daysToPeak) < 1 ? "peaks tonight" : daysToPeak > 0 ? `peaks in ${Math.ceil(daysToPeak)} d (${app.fmtDate(s.peak.getTime())})` : `peaked ${Math.round(-daysToPeak)} d ago`;
+      return `<div class="ds-card"><div class="title">${h(s.name)} <span class="tag">ZHR ${s.zhr}</span> ${b ? moonTag(b.moonIll) : ""}</div>
+        <div class="muted">${when} · radiant RA ${s.ra.toFixed(1)}h Dec ${s.dec}° · ${s.vel} km/s · parent ${h(s.parent)}</div>
+        ${b ? `<div class="grid" style="margin-top:6px"><div><b>Best time tonight</b>${app.fmtTime(b.from)} – ${app.fmtTime(b.to)}</div><div><b>Radiant then</b>${b.best.alt.toFixed(0)}° up</div><div><b>Expected</b>≈ ${Math.max(0, Math.round(b.ratePerHour))} / hour for your sky (limit mag ${lm.toFixed(1)})</div><div><b>Moon</b>${b.moonUp ? `up part of the night, ${Math.round(b.moonIll * 100)}% lit` : "down during darkness"}</div></div>
+        <canvas class="chart mchart" data-id="${s.id}" width="600" height="140"></canvas>` : "<p class='muted'>No dark window tonight at this latitude.</p>"}
+        <div class="muted" style="margin-top:6px">${h(s.note)}</div>
+        <div class="row"><button class="btn small" data-radiant="${s.id}">Show radiant on map</button></div></div>`;
+    };
+    panel.innerHTML = `${this.tabs()}
+      <h2>Meteor showers · ${h(st.observer.name)}</h2>
+      <h3>Active now</h3>${active.length ? active.map(card).join("") : "<p class='muted'>No major shower is active tonight. Sporadic rate is about 5–10 per hour after midnight under a dark sky.</p>"}
+      <h3>Next 12 months</h3>
+      <table><tr><th>Shower</th><th>Peak</th><th class="num">ZHR</th><th>Moon at peak</th></tr>
+      ${upcoming.map(s => `<tr><td>${h(s.name)}</td><td>${app.fmtDate(s.peak.getTime())}</td><td class="num">${s.zhr}</td><td>${moonTag(s.moonIll)} ${Math.round(s.moonIll * 100)}%</td></tr>`).join("")}</table>
+      <p class="muted">ZHR is the ideal rate with the radiant overhead under a perfectly dark sky; the "expected" figure scales it for radiant height, Moon and your estimated light pollution. Peak dates are computed from each shower's solar longitude (IMO).</p>`;
+    // radiant altitude + rate charts
+    for (const s of active) {
+      const cv = panel.querySelector(`canvas[data-id="${s.id}"]`); if (!cv || !s.tonight) continue;
+      const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, sm = s.tonight.samples;
+      ctx.fillStyle = "#0a0e1c"; ctx.fillRect(0, 0, W, H);
+      const x = (i) => (i / (sm.length - 1)) * W, maxRate = Math.max(1, ...sm.map(p => p.rate));
+      ctx.fillStyle = "rgba(255,210,122,0.22)"; sm.forEach((p, i) => { if (p.moonAlt > 0) ctx.fillRect(x(i) - 1, 0, W / sm.length + 1, H); });
+      ctx.strokeStyle = "#6fa8ff"; ctx.lineWidth = 3; ctx.beginPath(); sm.forEach((p, i) => { const yy = H - (Math.max(0, p.alt) / 90) * (H - 20); i ? ctx.lineTo(x(i), yy) : ctx.moveTo(x(i), yy); }); ctx.stroke();
+      ctx.strokeStyle = "#7dffb3"; ctx.lineWidth = 2; ctx.beginPath(); sm.forEach((p, i) => { const yy = H - (p.rate / maxRate) * (H - 20); i ? ctx.lineTo(x(i), yy) : ctx.moveTo(x(i), yy); }); ctx.stroke();
+      ctx.fillStyle = "#8e9ab5"; ctx.font = "14px system-ui"; ctx.fillText(app.fmtTime(sm[0].t), 4, H - 4); ctx.textAlign = "right"; ctx.fillText(app.fmtTime(sm[sm.length - 1].t), W - 4, H - 4); ctx.textAlign = "left";
+      ctx.fillStyle = "#6fa8ff"; ctx.fillText("radiant altitude", 4, 16); ctx.fillStyle = "#7dffb3"; ctx.fillText("expected rate", 130, 16); ctx.fillStyle = "rgba(255,210,122,0.9)"; ctx.fillText("Moon up", 250, 16);
+    }
+    panel.querySelectorAll("[data-radiant]").forEach(b => b.onclick = () => {
+      const s = active.find(x => x.id === b.dataset.radiant); const aa = E.toAltAz(obs, app.now, s.ra, s.dec, false);
+      app.setMode("planetarium"); app.animateView({ az: aa.az, alt: Math.max(-10, aa.alt), fov: 70 }, 700);
+      st.toast(`${s.name} radiant: ${aa.alt < 0 ? "below the horizon now, rises later" : aa.alt.toFixed(0) + "° up"} — meteors appear all over the sky, streaking away from this point.`, 5000);
+    });
   },
   async _weather(app, tw) {
     const el = $("#wx"); if (!el) return;

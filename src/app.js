@@ -8,6 +8,9 @@ import { SkyRenderer } from "./render/sky.js";
 import { SkyGL } from "./render/skygl.js";
 import { forecast } from "./weather.js";
 import { Satellites } from "./engine/satellites.js";
+import { activeShowers } from "./engine/meteors.js";
+import { LightPollution, describe as describeBortle } from "./engine/darksky.js";
+import { eqVec, precessionMatrix, mulMatVec } from "./engine/transform.js";
 import { initPanels } from "./ui/panels.js";
 import { getFix } from "./sensors/gps.js";
 import planetarium from "./modes/planetarium.js";
@@ -39,6 +42,7 @@ const app = {
     if (key === this.lastObsKey) return;
     this.lastObsKey = key; this.obs = E.makeObserver(o.lat, o.lon, o.altM || 0);
     this.declination = declination(o.lat, o.lon, this.now); this.lastEphem = 0; this.dirty = true;
+    if (this.lp?.grid) this.bortleHere = this.lp.bortle(o.lat, o.lon);
     if (this.sats.worker) this.sats.setObserver(o.lat, o.lon, o.altM || 0).then(() => this.sats.requestPositions(this.now));
   },
   /** Recompute Sun/Moon/planets (cheap; once per second or on demand). */
@@ -58,6 +62,7 @@ const app = {
     });
     this.sunAlt = this.bodies[0].alt;
     this.sats.requestPositions(t);
+    if (!this._radiantsT || Math.abs(t - this._radiantsT) > 3600000) { this._radiantsT = t; const M = precessionMatrix(t); this.radiants = activeShowers(t).map(s => ({ name: s.name, id: s.id, zhr: s.zhr, v: mulMatVec(M, eqVec(s.ra, s.dec)), peak: s.peak })); }
     this.projector.setSky(this.lstH, this.state.observer.lat); // keep alt/az readouts correct even before the next frame
     this.dirty = true;
   },
@@ -155,6 +160,7 @@ async function boot() {
   if (st.observer.source === "gps" || !localStorage.getItem("skyfathom.state.v1")) locateOnce(true);
   setTimeout(() => app.catalog.loadFaint().then(() => (app.dirty = true)), 4000);
   refreshBadges(); setInterval(refreshBadges, 60000);
+  setTimeout(() => { app.lp = new LightPollution(); app.lp.load("./data/lightpollution.png").then(() => { app.bortleHere = app.lp.bortle(st.observer.lat, st.observer.lon); refreshBadges(); }).catch(() => {}); }, 6000);
   app.sats.load("./data/tle.json").then(() => app.sats.setObserver(st.observer.lat, st.observer.lon, st.observer.altM || 0)).then(() => { app.sats.onPositions = (m) => { app.satList = [...m.values()]; app.dirty = true; }; app.sats.requestPositions(app.now); }).catch(e => report("satellites: " + e.message));
   const ua = navigator.userAgent, ios = /iPhone|iPad/.test(ua) && !window.navigator.standalone;
   if (ios && !localStorage.getItem("skyfathom.installHint")) { setTimeout(() => st.toast("Tip: Share → “Add to Home Screen” for full-screen use.", 6000), 3000); localStorage.setItem("skyfathom.installHint", "1"); }
@@ -187,6 +193,7 @@ async function refreshBadges() {
     const m = E.moonInfo(app.obs, app.now); $("#badge-moon b").textContent = Math.round(m.illumination * 100) + "%";
     const tw = E.twilight(app.obs, app.now); const dark = tw.astroDusk && tw.astroDawn ? (tw.astroDawn - tw.astroDusk) / 3600000 : 0;
     $("#badge-dark b").textContent = dark ? dark.toFixed(1) + " h" : "none"; $("#badge-dark").classList.toggle("bad", dark < 4);
+    const bb = $("#badge-bortle"); if (bb) { if (app.bortleHere != null) { bb.hidden = false; bb.querySelector("b").textContent = "B" + app.bortleHere.toFixed(1); bb.title = "Estimated Bortle " + app.bortleHere.toFixed(1) + " · " + describeBortle(app.bortleHere).name; bb.classList.toggle("good", app.bortleHere <= 4); bb.classList.toggle("bad", app.bortleHere >= 7); } else bb.hidden = true; }
   } catch (e) { report("badges: " + e.message); }
   try {
     const wx = await forecast(o.lat, o.lon); const now = app.now;
@@ -222,7 +229,7 @@ function loop() {
   P.setSky(app.lstH, st.observer.lat);
   P.setView(st.view);
   const scene = { projector: P, catalog: app.catalog, epochMs: app.now, sunAlt: app.sunAlt, bodies: app.bodies, settings: st.settings, selection: st.selection, transparent: false, crosshair: false, fovBox: null, ripple: app._ripple, twinkle: 0, arGuide: false,
-    sats: app.satList, satTrails: app.sats.trails, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
+    radiants: app.radiants || [], sats: app.satList, satTrails: app.sats.trails, satNames: (i) => app.sats.prettyName(i), satHighlight: (i) => app.sats.isHighlight(i),
     glBackground: !!app.gl?.ok, requestRender: () => app.requestRender(), selectionLabel: st.selection ? app.labelOf(st.selection) : "" };
   app.mode?.frame?.(app, scene);
   if (app.gl?.ok) {

@@ -46,6 +46,7 @@ export class SkyRenderer {
     this._stars(sc);
     this._bodies(sc);
     if (sc.settings.satellites !== false && sc.sats?.length) this._satellites(sc);
+    if (sc.radiants?.length) this._radiants(sc);
     this._horizon(sc);
     if (!sc.transparent) this._vignette();
     if (S.constellationLabels) this._constellationLabels(sc);
@@ -487,6 +488,20 @@ export class SkyRenderer {
     ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.stroke();
   }
 
+  // ---------- meteor-shower radiants (active showers only) ----------
+  _radiants(sc) {
+    const { ctx } = this, P = sc.projector, out = [0, 0, 0];
+    for (const r of sc.radiants) {
+      if (!sc.settings.belowHorizon && P.eqToHor(r.v[0], r.v[1], r.v[2])[2] < -0.02) continue;
+      P.projectEq(r.v[0], r.v[1], r.v[2], out); if (!out[2]) continue;
+      const x = out[0], y = out[1]; if (x < -30 || x > this.w + 30 || y < -30 || y > this.h + 30) continue;
+      const days = Math.abs(r.peak - sc.epochMs) / 86400000, strong = days < 3 && r.zhr >= 20;
+      ctx.strokeStyle = strong ? "rgba(255,200,120,0.95)" : "rgba(255,200,120,0.55)"; ctx.lineWidth = 1.2;
+      for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.3; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 7, y + Math.sin(a) * 7); ctx.lineTo(x + Math.cos(a) * (strong ? 18 : 13), y + Math.sin(a) * (strong ? 18 : 13)); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, TAU); ctx.stroke();
+      this.labels.push({ x: x + 20, y: y - 6, text: `${r.name} radiant`, color: "rgba(255,215,150,0.95)", font: "600 11px system-ui", prio: strong ? -6 : 1 });
+    }
+  }
   // ---------- satellites: moving markers with short trails ----------
   _satellites(sc) {
     const { ctx } = this, P = sc.projector, out = [0, 0, 0], fov = P.view.fov;

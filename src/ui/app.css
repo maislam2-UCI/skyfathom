@@ -199,3 +199,18 @@ input, select { font-size: 16px; }                                    /* iOS Saf
 #toast { animation: rise .2s cubic-bezier(.2,.8,.2,1); }
 #sky, #skygl { will-change: transform; }
 @media (prefers-reduced-motion: reduce) { #panel, #info, #toast, #sheet, .sheet-inner { animation: none; } }
+
+/* ---------- segmented views, Moon calendar, meteor charts ---------- */
+.seg { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: rgba(255,255,255,.06); margin: 2px 0 12px; }
+.seg button { flex: 1; padding: 8px 6px; border-radius: 9px; font-size: 12.5px; font-weight: 600; color: var(--muted); transition: background .15s, color .15s; }
+.seg button.on { background: rgba(127,178,255,.2); color: var(--fg); }
+.cal-head { display: grid; grid-template-columns: repeat(7, 1fr); font-size: 10.5px; color: var(--muted); text-align: center; margin-top: 4px; letter-spacing: .04em; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 4px; }
+.cal-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px 4px; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid transparent; }
+.cal-cell.empty { background: none; }
+.cal-cell .cal-day { font-size: 11px; color: var(--muted); }
+.cal-cell .cal-ill { font-size: 10px; color: var(--muted); }
+.cal-cell.today { border-color: var(--accent); background: rgba(127,178,255,.12); }
+.cal-cell.quarter .cal-ill { color: var(--fg); }
+.cal-cell svg { filter: drop-shadow(0 0 4px rgba(220,228,255,.25)); }
+canvas.mchart { height: 90px; margin-top: 8px; }
