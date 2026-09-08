@@ -9,6 +9,7 @@ import { buildIcs, deliverIcs } from "../ui/ics.js";
 import { skyForecast, bestWindow, sqmFromBortle } from "../engine/skyquality.js";
 import { geomagneticLatitude, kpNeeded, kpScale, kpColor } from "../engine/aurora.js";
 import { surfacePoint } from "../render/globe.js";
+import { Orrery, helioEcl } from "../render/orrery.js";
 import { FACTS, distances } from "../engine/planets.js";
 
 const $ = (s) => document.querySelector(s);
@@ -24,15 +25,15 @@ const h = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "
 export default {
   name: "planner", view: "tonight", monthOffset: 0,
   enter(app) { $("#panel").hidden = false; this.render(app); this._t = setInterval(() => { if (app.state.time.live) this._refreshClock(app); }, 30000); },
-  exit(app) { $("#panel").hidden = true; clearInterval(this._t); clearInterval(this._earthTimer); },
+  exit(app) { $("#panel").hidden = true; clearInterval(this._t); clearInterval(this._earthTimer); this._sysStop?.(); },
   frame(app, sc) { sc.fovBox = null; },
   hud(app) { app.hud(`<b>Tonight</b> · ${app.state.observer.name} · ${app.fmtDate(app.now)}`); },
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
-  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["earth", "Earth"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
-  bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { clearInterval(this._earthTimer); this.view = b.dataset.view; this.render(app); }); },
+  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["system", "Solar System"], ["earth", "Earth"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
+  bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { clearInterval(this._earthTimer); this._sysStop?.(); this.view = b.dataset.view; this.render(app); }); },
   render(app) {
-    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else if (this.view === "aurora") this._renderAurora(app); else if (this.view === "earth") this._renderEarth(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
+    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else if (this.view === "aurora") this._renderAurora(app); else if (this.view === "earth") this._renderEarth(app); else if (this.view === "system") this._renderSystem(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
   },
   _render(app) {
     const st = app.state, obs = app.obs, t = app.now, panel = $("#panel");
@@ -175,6 +176,41 @@ export default {
         app.state.toast("Time set to the pass — tap the time chip and “Live now” to come back.", 4000);
       });
     } catch (e) { el.innerHTML = `<p class="muted">Pass prediction failed: ${h(e.message)}</p>`; }
+  },
+  // ---------------- Solar System view ----------------
+  _renderSystem(app) {
+    const st = app.state, panel = $("#panel");
+    this._sysOffset = this._sysOffset ?? 0; this._sysScale = this._sysScale ?? "log"; this._sysSel = this._sysSel ?? null;
+    panel.innerHTML = `${this.tabs()}<h2>Solar System</h2>
+      <div class="row" style="margin:0 0 8px"><div class="seg" id="sys-scale" style="margin:0;flex:1">${[["inner", "Inner"], ["log", "All (log)"], ["outer", "Outer"]].map(([k, l]) => `<button data-scale="${k}" class="${this._sysScale === k ? "on" : ""}">${l}</button>`).join("")}</div><button class="btn small" id="sys-play">▶ Play</button></div>
+      <canvas id="sys-cv" class="dsmap" width="800" height="800" style="aspect-ratio:1"></canvas>
+      <div class="field"><label>Time <span id="sys-t"></span></label><input id="sys-slider" type="range" min="-730" max="730" step="1" value="${this._sysOffset}"></div>
+      <div class="row"><button class="btn small" id="sys-now">Now</button><button class="btn small" id="sys-apply">Use this date in the app</button></div>
+      <div id="sys-info" class="grid" style="margin-top:8px"></div>
+      <p class="muted">Seen from above the north ecliptic pole; planets move anti-clockwise. Orbits are the real paths from the ephemeris (Pluto dashed). Tap a planet for its distances and where it is in your sky; the green line joins Earth to it.</p>`;
+    const cv = $("#sys-cv"), orr = new Orrery(cv); orr.scale = this._sysScale; orr.selected = this._sysSel;
+    const tOf = () => app.now + this._sysOffset * 86400000;
+    const fmt = (d) => app.fmtDate(d) + (Math.abs(this._sysOffset) >= 1 ? ` (${this._sysOffset > 0 ? "+" : ""}${Math.round(this._sysOffset)} d)` : " (now)");
+    const info = () => {
+      const t = tOf(), el = $("#sys-info"); if (!orr.selected) { el.innerHTML = ""; return; }
+      const name = orr.selected;
+      if (name === "Sun") { el.innerHTML = "<div><b>Sun</b>Centre of mass of the system · 1,391,400 km across · light reaches Earth in 8 min 19 s</div>"; return; }
+      const v = helioEcl(name, t), e = helioEcl("Earth", t), rs = Math.hypot(...v), re = Math.hypot(v[0] - e[0], v[1] - e[1], v[2] - e[2]);
+      const lon = ((Math.atan2(v[1], v[0]) * 180 / Math.PI) + 360) % 360;
+      let sky = "";
+      if (name !== "Earth") { try { const tm = Astronomy.MakeTime(new Date(t)); const eq = Astronomy.Equator(name, tm, app.obs, true, true), hor = Astronomy.Horizon(tm, app.obs, eq.ra, eq.dec, "normal"); const el2 = Astronomy.AngleFromSun(name, tm); const ill = Astronomy.Illumination(name, tm); sky = `<div><b>In your sky then</b>${hor.altitude > 0 ? `${hor.altitude.toFixed(0)}° up, ${compass(hor.azimuth)}` : "below the horizon"} · ${el2.toFixed(0)}° from the Sun · mag ${ill.mag.toFixed(1)}${el2 > 170 ? " · <span class=\"tag good\">near opposition</span>" : el2 < 10 ? " · <span class=\"tag bad\">near conjunction</span>" : ""}</div>`; } catch { /* ignore */ } }
+      el.innerHTML = `<div><b>${name}</b>${rs.toFixed(3)} AU from the Sun · heliocentric longitude ${lon.toFixed(1)}°</div>${name !== "Earth" ? `<div><b>From Earth</b>${re.toFixed(3)} AU · ${(re * 149.6).toFixed(0)} million km · light ${(re * 499 / 60).toFixed(1)} min</div>` : ""}${sky}`;
+    };
+    const draw = () => { $("#sys-t").textContent = fmt(tOf()); orr.draw(tOf(), { caption: app.fmtDate(tOf()) }); info(); };
+    draw();
+    $("#sys-scale").querySelectorAll("[data-scale]").forEach(b => b.onclick = () => { this._sysScale = orr.scale = b.dataset.scale; $("#sys-scale").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); draw(); });
+    $("#sys-slider").oninput = (e) => { this._sysOffset = +e.target.value; draw(); };
+    $("#sys-now").onclick = () => { this._sysOffset = 0; $("#sys-slider").value = 0; draw(); };
+    $("#sys-apply").onclick = () => { const t = tOf(); st.time = { live: Math.abs(this._sysOffset) < 0.5, offsetMs: t - Date.now(), epoch: t }; app.updateEphemeris(true); st.emit(); st.toast("App time set — Map and Tonight now show this date.", 3000); };
+    let playing = false, raf = null, last = 0;
+    $("#sys-play").onclick = () => { playing = !playing; $("#sys-play").textContent = playing ? "❚❚ Pause" : "▶ Play"; if (playing) { last = performance.now(); const step = (now) => { if (!playing) return; this._sysOffset = Math.min(730, this._sysOffset + (now - last) / 1000 * (this._sysScale === "inner" ? 3 : 15)); last = now; $("#sys-slider").value = Math.round(this._sysOffset); draw(); if (this._sysOffset >= 730) { playing = false; $("#sys-play").textContent = "▶ Play"; return; } raf = requestAnimationFrame(step); }; raf = requestAnimationFrame(step); } else cancelAnimationFrame(raf); };
+    cv.onclick = (e) => { const r = cv.getBoundingClientRect(); const hit = orr.pick((e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height); orr.selected = this._sysSel = hit ? hit.name : null; draw(); };
+    this._sysStop = () => { playing = false; cancelAnimationFrame(raf); };
   },
   // ---------------- Earth view ----------------
   _renderEarth(app) {

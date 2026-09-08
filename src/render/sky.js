@@ -210,7 +210,8 @@ export class SkyRenderer {
     if (sel && sel.kind !== "constellation") {
       if (sel.kind === "body") { const b = sc.bodies.find(b => b.name === sel.ref); if (b) tgt = horVec(b.alt, b.az); name = sel.ref; }
       else if (sel.kind === "sat") { const s = sc.sats?.find(s => s.i === sel.index); if (s) tgt = horVec(s.el, s.az); name = (sc.selectionLabel || "").split(" ·")[0]; }
-      else { const s = sel.set, i = sel.index; const h = P.eqToHor(s.x[i], s.y[i], s.z[i]); tgt = h; name = sc.selectionLabel || ""; }
+      else if (sel.kind === "moon") { const b = sc.bodies.find(b => b.name === "Jupiter"); if (b) tgt = horVec(b.alt, b.az); name = sel.ref; }
+      else if (sel.set && sel.set.x) { const s = sel.set, i = sel.index; const h = P.eqToHor(s.x[i], s.y[i], s.z[i]); tgt = h; name = sc.selectionLabel || ""; }
     }
     let sep = null, locked = false, dirAng = 0, tgtBehind = false;
     if (tgt) {
