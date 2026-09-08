@@ -186,3 +186,4 @@ body.night #compass .needle-n, body.night #compass .marker { fill: #ff4a3c; }
 a.btn { text-decoration: none; display: inline-block; }
 #modes button span { font-size: 10.5px; }
 #ds-radius { padding: 6px 8px; font-size: 12px; }
+a.btn { color: var(--fg); } a.btn.primary { color: #041022; }
