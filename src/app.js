@@ -13,8 +13,9 @@ import planetarium from "./modes/planetarium.js";
 import ar from "./modes/ar.js";
 import planner from "./modes/planner.js";
 import framing from "./modes/framing.js";
+import darksky from "./modes/darksky.js";
 
-const MODES = { planetarium, ar, planner, framing };
+const MODES = { planetarium, ar, planner, framing, darksky };
 const PLANET_ARCSEC_1AU = { Mercury: 6.74, Venus: 16.92, Mars: 9.36, Jupiter: 196.94, Saturn: 165.6, Uranus: 70.5, Neptune: 68.3 };
 const $ = (s) => document.querySelector(s);
 

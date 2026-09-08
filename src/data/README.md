@@ -10,3 +10,5 @@
 
 Also vendored: `src/vendor/astronomy.browser.min.js` (astronomy-engine 2.1.19, MIT, Don Cross) and
 `src/engine/geomag-coeffs.js` (NOAA/BGS World Magnetic Model 2025 coefficients, public domain).
+| lightpollution.png | 1800×900 (0.2°) estimated Bortle class × 25 per pixel, baked in the browser from NASA Black Marble 2016 (light-spread model, calibrated on known sites) | NASA Earth Observatory | public domain (estimate, not a measurement) |
+| darksites.json | 44 curated dark-sky destinations (USA + Bangladesh) with typical Bortle class | hand-curated from DarkSky International / park pages | CC0 (this project) |

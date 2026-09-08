@@ -171,3 +171,18 @@ body.night #compass .needle-n, body.night #compass .marker { fill: #ff4a3c; }
 #info.compact { padding: 10px 14px; }
 #info.compact .title { font-size: 16px; }
 #info.compact .row { margin-top: 8px; }
+
+/* ---------- Dark Sky ---------- */
+.bortle-here { display: flex; gap: 14px; align-items: center; margin: 6px 0 4px; }
+.bortle-ring { flex: none; width: 74px; height: 74px; border-radius: 50%; display: grid; place-content: center; text-align: center; background: radial-gradient(circle at 50% 40%, var(--c), #05070f 78%); border: 2px solid var(--line2); box-shadow: 0 0 22px color-mix(in srgb, var(--c) 45%, transparent); }
+.bortle-ring b { font-size: 22px; line-height: 1; color: #fff; text-shadow: 0 1px 3px #000; } .bortle-ring small { font-size: 10px; color: rgba(255,255,255,.75); }
+.bortle-name { font-weight: 650; font-size: 15px; }
+.dsmap { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--line2); background: #000; cursor: pointer; }
+.ds-legend { display: flex; gap: 4px; margin: 6px 0 2px; font-size: 10px; color: var(--muted); flex-wrap: wrap; }
+.ds-legend span { display: inline-flex; align-items: center; gap: 3px; } .ds-legend i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(255,255,255,.35); }
+.ds-card { margin-top: 10px; padding: 12px; border-radius: 12px; background: rgba(125,255,179,.06); border: 1px solid rgba(125,255,179,.25); }
+.ds-card .title { font-weight: 650; font-size: 15px; }
+a.btn { text-decoration: none; display: inline-block; }
+#modes button span { font-size: 10.5px; }
+#ds-radius { padding: 6px 8px; font-size: 12px; }
