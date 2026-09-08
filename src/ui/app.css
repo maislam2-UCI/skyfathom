@@ -214,3 +214,9 @@ input, select { font-size: 16px; }                                    /* iOS Saf
 .cal-cell.quarter .cal-ill { color: var(--fg); }
 .cal-cell svg { filter: drop-shadow(0 0 4px rgba(220,228,255,.25)); }
 canvas.mchart { height: 90px; margin-top: 8px; }
+
+/* ---------- segmented control scroll + Kp bars ---------- */
+.seg { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { flex: 1 0 auto; min-width: 76px; }
+.timeline.kp { height: 64px; }

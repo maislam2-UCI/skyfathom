@@ -6,6 +6,8 @@ import { lst as lstOf, norm24 } from "../engine/transform.js";
 import { activeShowers, upcomingPeaks, bestTimeTonight, limitingMagFromBortle } from "../engine/meteors.js";
 import { conjunctions, isStar } from "../engine/events.js";
 import { buildIcs, deliverIcs } from "../ui/ics.js";
+import { skyForecast, bestWindow, sqmFromBortle } from "../engine/skyquality.js";
+import { geomagneticLatitude, kpNeeded, kpScale, kpColor } from "../engine/aurora.js";
 
 const $ = (s) => document.querySelector(s);
 export function moonSvg(phaseAngle, illum, size = 44) {
@@ -25,10 +27,10 @@ export default {
   hud(app) { app.hud(`<b>Tonight</b> · ${app.state.observer.name} · ${app.fmtDate(app.now)}`); },
   _refreshClock(app) { const el = $("#pl-now"); if (el) el.textContent = app.fmtTime(app.now); },
 
-  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
+  tabs() { return `<div class="seg" id="pl-seg">${[["tonight", "Tonight"], ["moon", "Moon"], ["meteors", "Meteors"], ["conj", "Conjunctions"], ["aurora", "Aurora"]].map(([k, l]) => `<button data-view="${k}" class="${this.view === k ? "on" : ""}">${l}</button>`).join("")}</div>`; },
   bindTabs(app) { $("#pl-seg")?.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { this.view = b.dataset.view; this.render(app); }); },
   render(app) {
-    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
+    try { if (this.view === "moon") this._renderMoon(app); else if (this.view === "meteors") this._renderMeteors(app); else if (this.view === "conj") this._renderConj(app); else if (this.view === "aurora") this._renderAurora(app); else this._render(app); this.bindTabs(app); } catch (e) { $("#panel").innerHTML = `<h2>Tonight could not be computed</h2><p class="error">${e.message}</p><p class="muted">${String(e.stack || "").split("\n").slice(0, 3).join("<br>")}</p><p class="muted">Location ${app.state.observer.lat.toFixed(3)}, ${app.state.observer.lon.toFixed(3)} · ${app.tz()}</p>`; app.report?.("Tonight: " + e.message); }
   },
   _render(app) {
     const st = app.state, obs = app.obs, t = app.now, panel = $("#panel");
@@ -108,6 +110,8 @@ export default {
       <div class="list" id="pl-targets">${targets.slice(0, 14).map(x => `<button data-dso="${x.i}"><span>${h(app.catalog.dsoLabel(x.o))} <small>${x.o.typeName}</small></span><small>mag ${x.o.mag ?? "?"} · ${x.maxAlt.toFixed(0)}° @ ${app.fmtTime(x.bestT)}</small></button>`).join("") || "<p class='muted'>Nothing reaches 30° during darkness.</p>"}</div>
       <h3 id="pl-sats">Satellite passes tonight <span class="muted">(sunlit, ≥ 10° up, sky dark)</span></h3>
       <div id="sat-passes"><p class="muted">Computing passes for ${app.sats.tles.length || "…"} satellites…</p></div>
+      <h3>Sky darkness tonight <span class="muted">(light pollution + Moon + twilight + clouds)</span></h3>
+      <div id="skyq"><p class="muted">Computing…</p></div>
       <h3>Cloud forecast <span class="muted" id="wx-src">(Open-Meteo)</span></h3>
       <div id="wx"><p class="muted">Loading…</p></div>
       <h3>Exposure &amp; framing · ${h(g.name)}</h3>
@@ -169,6 +173,37 @@ export default {
         app.state.toast("Time set to the pass — tap the time chip and “Live now” to come back.", 4000);
       });
     } catch (e) { el.innerHTML = `<p class="muted">Pass prediction failed: ${h(e.message)}</p>`; }
+  },
+  // ---------------- Aurora ----------------
+  _renderAurora(app) {
+    const st = app.state, panel = $("#panel"), o = st.observer;
+    const gm = geomagneticLatitude(o.lat, o.lon), need = kpNeeded(gm), S = st.settings;
+    const notif = typeof Notification !== "undefined", perm = notif ? Notification.permission : "unsupported";
+    panel.innerHTML = `${this.tabs()}<h2>Aurora · ${h(o.name)}</h2>
+      <div class="grid"><div><b>Geomagnetic latitude</b>${gm.toFixed(1)}°</div><div><b>Kp needed here</b>${need.horizon >= 9.5 ? "beyond Kp 9 — essentially never at this latitude" : `≈ ${need.horizon.toFixed(0)} low on the horizon, ${need.overhead >= 9.5 ? "never overhead" : need.overhead.toFixed(0) + " overhead"}`}</div></div>
+      <div id="au-live"><p class="muted">Loading NOAA space weather…</p></div>
+      <div class="ds-card"><div class="title">Aurora alerts</div>
+        <div class="row" style="align-items:center"><label class="toggle" style="border:0;padding:0;gap:8px"><span>Notify me when Kp is high enough</span><input type="checkbox" id="au-on" ${S.auroraAlerts ? "checked" : ""} ${notif ? "" : "disabled"}></label>
+        <select id="au-kp"><option value="0" ${!S.auroraKp ? "selected" : ""}>auto (Kp ${Math.min(9, Math.ceil(need.horizon))} for this spot)</option>${[3, 4, 5, 6, 7, 8, 9].map(k => `<option value="${k}" ${S.auroraKp === k ? "selected" : ""}>Kp ≥ ${k}</option>`).join("")}</select></div>
+        <div class="muted" style="margin-top:6px">${perm === "denied" ? "Notifications are blocked for this site." : "Checked hourly while the app is open, against the observed Kp and the 3-day forecast. Pick a lower Kp if you want early warning of storms you can follow on the news or drive north for."}</div></div>
+      <p class="muted">Kp is the global geomagnetic index (0–9). The aurora oval expands toward the equator as Kp rises. From ${h(o.name)} at ${gm.toFixed(0)}° geomagnetic latitude ${need.horizon < 6 ? "aurora is a realistic sight during storms" : need.horizon < 9 ? "only major storms (Kp ${need.horizon.toFixed(0)}+) bring a red glow to the northern horizon" : "aurora is effectively impossible; enjoy it on trips north of ~50° geomagnetic latitude"}. Data: NOAA SWPC.</p>`;
+    $("#au-on").onchange = async (e) => { S.auroraAlerts = e.target.checked; st.save(); if (e.target.checked) { const p = notif ? (Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission) : "unsupported"; if (p !== "granted") { S.auroraAlerts = false; st.save(); e.target.checked = false; st.toast("Notifications are not available — allow them in the phone settings.", 4000); } else { st.toast("Aurora alerts on.", 2000); app.auroraCheck?.(); } } };
+    $("#au-kp").onchange = (e) => { S.auroraKp = +e.target.value; st.save(); };
+    (async () => {
+      const el = $("#au-live");
+      try {
+        const d = await app.aurora.kp();
+        const now = d.now, fc = d.forecast.filter(r => r.t > Date.now() - 3 * 3600000).slice(0, 24);
+        const maxFc = fc.reduce((m, r) => (r.kp > m.kp ? r : m), fc[0] ?? now);
+        const verdict = (kp) => kp >= need.overhead ? "<span class=\"tag good\">overhead here</span>" : kp >= need.horizon ? "<span class=\"tag warn\">low on the northern horizon</span>" : "<span class=\"tag\">not visible here</span>";
+        el.innerHTML = `<div class="bortle-here"><div class="bortle-ring" style="--c:${kpColor(now.kp)}"><b>${now.kp.toFixed(1)}</b><small>Kp now</small></div><div><div class="bortle-name">${kpScale(now.kp)} ${verdict(now.kp)}</div><div class="muted">Observed ${app.fmtTime(now.t, { date: true })} · next 3 days peak Kp ${d.maxNext3d.toFixed(1)} ${verdict(d.maxNext3d)}</div></div></div>
+          <h3>Forecast (3-hour Kp)</h3><div class="timeline kp">${fc.map(r => `<div title="${app.fmtTime(r.t, { date: true })} · Kp ${r.kp.toFixed(1)} ${r.kind}" style="height:${Math.max(6, r.kp / 9 * 100)}%;background:${kpColor(r.kp)};opacity:${r.kind === "estimated" ? 0.6 : 1}"></div>`).join("")}</div>
+          <div class="timeline-labels"><span>${fc[0] ? app.fmtTime(fc[0].t, { date: true }) : ""}</span><span>${fc[fc.length >> 1] ? app.fmtTime(fc[fc.length >> 1].t, { date: true }) : ""}</span><span>${fc[fc.length - 1] ? app.fmtTime(fc[fc.length - 1].t, { date: true }) : ""}</span></div>
+          <div class="legend">Threshold here: Kp ${need.horizon >= 9.5 ? "9+" : need.horizon.toFixed(0)}. Peak in this forecast: Kp ${maxFc.kp.toFixed(1)} at ${app.fmtTime(maxFc.t, { date: true })}.</div>
+          <div class="row"><button class="btn small" id="au-ov">Check live aurora probability here (NOAA OVATION, ~1 MB)</button></div><div id="au-ovr"></div>`;
+        $("#au-ov").onclick = async () => { const r = $("#au-ovr"); r.innerHTML = "<p class='muted'>Loading OVATION…</p>"; try { const p = await app.aurora.probabilityAt(o.lat, o.lon); r.innerHTML = `<div class="grid"><div><b>Probability here now</b>${p.here}% (best within 2°: ${p.nearby}%)</div><div><b>Oval reaches down to</b>${p.ovalEdgeLat != null ? p.ovalEdgeLat + "° N (≥ 20% probability)" : "—"}</div><div><b>Nowcast</b>${p.forecastTime}</div></div>`; } catch (e) { r.innerHTML = `<p class="muted">OVATION unavailable (${h(e.message)})</p>`; } };
+      } catch (e) { el.innerHTML = `<p class="muted">Space-weather feed unavailable (${h(e.message)}). Works when online.</p>`; }
+    })();
   },
   // ---------------- Conjunctions ----------------
   _renderConj(app) {
@@ -287,10 +322,32 @@ export default {
       st.toast(`${s.name} radiant: ${aa.alt < 0 ? "below the horizon now, rises later" : aa.alt.toFixed(0) + "° up"} — meteors appear all over the sky, streaking away from this point.`, 5000);
     });
   },
+  _skyQuality(app, tw, wxHours) {
+    const el = $("#skyq"); if (!el) return;
+    try {
+      const o = app.state.observer, b = app.bortleHere ?? null;
+      const start = (tw.sunset ?? tw.anchor).getTime() - 30 * 60000, end = (tw.sunrise ?? new Date(start + 14 * 3600000)).getTime() + 30 * 60000;
+      const sm = skyForecast(app.obs, b ?? 5, start, end, wxHours ?? [], 30), win = bestWindow(sm);
+      const col = (s) => s.sqm >= 21.3 ? "#2b2b90" : s.sqm >= 20.5 ? "#1c5fb0" : s.sqm >= 19.5 ? "#2e8b57" : s.sqm >= 18.5 ? "#c8b400" : s.sqm >= 17.5 ? "#e07c00" : "#c0392b";
+      const bars = sm.map(s => `<div title="${app.fmtTime(s.t)} · ${s.sqm.toFixed(1)} mag/arcsec² · limit mag ${s.lm.toFixed(1)}${s.factors.moon > 0.05 ? " · Moon +" + s.factors.moon.toFixed(1) : ""}${s.factors.twilight > 0.05 ? " · twilight" : ""}${s.cloud > 20 ? " · cloud " + s.cloud + "%" : ""}" style="height:${Math.max(4, s.score)}%;background:${col(s)};opacity:${s.cloud > 60 ? 0.45 : 1}"></div>`).join("");
+      const dark = sm.filter(s => s.sunAlt < -18);
+      const darkest = dark.length ? dark.reduce((m, s) => (s.sqm > m.sqm ? s : m)) : null;
+      el.innerHTML = `<div class="timeline">${bars}</div><div class="timeline-labels"><span>${app.fmtTime(sm[0].t)}</span><span>${app.fmtTime(sm[sm.length >> 1].t)}</span><span>${app.fmtTime(sm[sm.length - 1].t)}</span></div>
+        <div class="grid" style="margin-top:8px">
+          <div><b>Your site (no Moon)</b>${b != null ? `Bortle ${b.toFixed(1)} · ${sqmFromBortle(b).toFixed(1)} mag/arcsec²` : "Bortle unknown (map still loading)"}</div>
+          <div><b>Darkest hour</b>${darkest ? `${app.fmtTime(darkest.t)} · ${darkest.sqm.toFixed(1)} mag/arcsec² · limit mag ${darkest.lm.toFixed(1)}` : "no full darkness tonight"}</div>
+          <div><b>Best window</b>${win ? `${app.fmtTime(win.from)} – ${app.fmtTime(win.to)} (score ${win.peak.score})` : "—"}</div>
+          <div><b>Milky Way</b>${sm.some(s => s.milkyWay) ? "visible from " + app.fmtTime(sm.find(s => s.milkyWay).t) : "washed out tonight"}</div>
+        </div>
+        <div class="legend">Bar height = sky score; colour = darkness (blue = truly dark, red = bright). Hover/tap a bar for the Moon, twilight and cloud contributions. Model: Bortle → sky brightness, Moon brightness and altitude, Sun altitude, cloud back-scatter.</div>`;
+    } catch (e) { el.innerHTML = `<p class="muted">Sky forecast unavailable (${h(e.message)})</p>`; app.report?.("skyq: " + e.message); }
+  },
   async _weather(app, tw) {
     const el = $("#wx"); if (!el) return;
+    this._skyQuality(app, tw, null);
     try {
       const o = app.state.observer, wx = await forecast(o.lat, o.lon);
+      this._skyQuality(app, tw, wx.hours);
       const start = (tw.sunset ?? tw.anchor).getTime() - 3600000, end = (tw.sunrise ?? new Date(start + 14 * 3600000)).getTime() + 3600000;
       const hours = wx.hours.filter(x => x.t >= start && x.t <= end);
       if (!hours.length) { el.innerHTML = "<p class='muted'>Forecast does not cover tonight yet.</p>"; return; }

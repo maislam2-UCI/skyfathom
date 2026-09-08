@@ -11,6 +11,7 @@ import { Satellites } from "./engine/satellites.js";
 import { activeShowers } from "./engine/meteors.js";
 import { LightPollution, describe as describeBortle } from "./engine/darksky.js";
 import { PassAlerts } from "./engine/alerts.js";
+import { Aurora, geomagneticLatitude, kpNeeded, kpScale } from "./engine/aurora.js";
 import { eqVec, precessionMatrix, mulMatVec } from "./engine/transform.js";
 import { initPanels } from "./ui/panels.js";
 import { getFix } from "./sensors/gps.js";
@@ -163,6 +164,23 @@ async function boot() {
   refreshBadges(); setInterval(refreshBadges, 60000);
   setTimeout(() => { app.lp = new LightPollution(); app.lp.load("./data/lightpollution.png").then(() => { app.bortleHere = app.lp.bortle(st.observer.lat, st.observer.lon); refreshBadges(); }).catch(() => {}); }, 6000);
   app.alerts = new PassAlerts(app);
+  app.aurora = new Aurora();
+  const auroraCheck = async () => {
+    const s = app.state.settings; if (!s.auroraAlerts || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    try {
+      const d = await app.aurora.kp(); const o = app.state.observer, need = kpNeeded(geomagneticLatitude(o.lat, o.lon));
+      const thr = s.auroraKp > 0 ? s.auroraKp : Math.min(9, Math.ceil(need.horizon));
+      const soon = d.forecast.filter(r => r.t > Date.now() - 3 * 3600000 && r.t < Date.now() + 24 * 3600000);
+      const hit = soon.find(r => r.kp >= thr) || (d.now.kp >= thr ? { ...d.now, now: true } : null);
+      if (!hit) return;
+      const id = "aurora-" + Math.floor(hit.t / (12 * 3600000)); if (localStorage.getItem("skyfathom.aurora.fired") === id) return; localStorage.setItem("skyfathom.aurora.fired", id);
+      const title = `Aurora alert: Kp ${hit.kp.toFixed(1)} (${kpScale(hit.kp)})`, body = `${hit.now ? "Now" : "Forecast " + app.fmtTime(hit.t, { date: true })} · your threshold Kp ${thr}. Look north from a dark spot after full darkness.`;
+      const reg = app.swReg || (await navigator.serviceWorker?.getRegistration());
+      if (reg?.showNotification) reg.showNotification(title, { body, tag: id, icon: "./assets/icon-192.png", data: { aurora: true } }); else new Notification(title, { body });
+      app.state.toast(title + " — " + body, 10000);
+    } catch (e) { report("aurora check: " + e.message); }
+  };
+  app.auroraCheck = auroraCheck; setTimeout(auroraCheck, 12000); setInterval(auroraCheck, 60 * 60000);
   app.sats.load("./data/tle.json").then(() => app.sats.setObserver(st.observer.lat, st.observer.lon, st.observer.altM || 0)).then(() => { app.sats.onPositions = (m) => { app.satList = [...m.values()]; app.dirty = true; }; app.sats.requestPositions(app.now); app.alerts.reschedule(); setInterval(() => app.alerts.reschedule(), 60 * 60000); }).catch(e => report("satellites: " + e.message));
   const ua = navigator.userAgent, ios = /iPhone|iPad/.test(ua) && !window.navigator.standalone;
   if (ios && !localStorage.getItem("skyfathom.installHint")) { setTimeout(() => st.toast("Tip: Share → “Add to Home Screen” for full-screen use.", 6000), 3000); localStorage.setItem("skyfathom.installHint", "1"); }
