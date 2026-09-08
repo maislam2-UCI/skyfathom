@@ -20,7 +20,7 @@ export class SkyRenderer {
     this.letterSpacing = "letterSpacing" in this.ctx;
   }
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.maxDpr || 2);
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (w === this.w && h === this.h && dpr === this.dpr) return false;
     this.dpr = dpr; this.w = w; this.h = h;
@@ -98,10 +98,9 @@ export class SkyRenderer {
     }
   }
   _vignette() {
-    const { ctx } = this, R = Math.hypot(this.w, this.h) / 2;
-    const g = ctx.createRadialGradient(this.w / 2, this.h / 2, R * 0.55, this.w / 2, this.h / 2, R);
-    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,0.35)");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, this.w, this.h);
+    const { ctx } = this, R = Math.hypot(this.w, this.h) / 2, key = this.w + "x" + this.h;
+    if (this._vigKey !== key) { const g = ctx.createRadialGradient(this.w / 2, this.h / 2, R * 0.55, this.w / 2, this.h / 2, R); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,0.35)"); this._vig = g; this._vigKey = key; }
+    ctx.fillStyle = this._vig; ctx.fillRect(0, 0, this.w, this.h);
   }
   _starVisibility(sunAlt) { if (sunAlt <= -12) return 1; if (sunAlt >= -2) return 0; return (-sunAlt - 2) / 10; }
   _limitingMag(fov, vis) {
@@ -328,7 +327,7 @@ export class SkyRenderer {
     const labelMag = (fov > 100 ? 1.2 : fov > 60 ? 2.0 : fov > 35 ? 3.0 : fov > 18 ? 4.0 : 5.5) * S.labelDensity;
     const hitMag = fov > 60 ? 4.5 : 6.5;
     const e = P.eqHor;
-    const glows = [];
+    const glows = [], dots = {}, discs = {};
     for (const s of sets) {
       for (let i = 0; i < s.n; i++) {
         const m = s.mag[i]; if (m > lim) break;
@@ -346,11 +345,12 @@ export class SkyRenderer {
         if (ext < 1) { cg = Math.round(cg * (0.7 + 0.3 * ext)); cb = Math.round(cb * (0.5 + 0.5 * ext)); }
         let alpha = Math.min(1, 0.3 + (lim - m) * 0.22) * (0.35 + 0.65 * vis) * ext;
         if (sc.twinkle && r > 1.2) alpha *= 0.82 + 0.18 * Math.sin(sc.twinkle * (2 + (i % 7)) + i);
-        if (r < 0.9) { ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha * Math.max(0.35, r)})`; ctx.fillRect(sx - 0.75, sy - 0.75, 1.5, 1.5); }
+        if (r < 0.9) { const key = `${cr},${cg},${cb},${(alpha * Math.max(0.35, r) * 8 | 0) / 8}`; (dots[key] ||= []).push(sx, sy); }
+        else if (r <= 2.0) { const key = `${cr},${cg},${cb},${(alpha * 8 | 0) / 8}|${(r * 4 | 0) / 4}`; (discs[key] ||= []).push(sx, sy); }
         else {
           ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
-          if (r > 1.8) { ctx.fillStyle = `rgba(255,255,255,${alpha * 0.8})`; ctx.beginPath(); ctx.arc(sx, sy, r * 0.45, 0, TAU); ctx.fill(); }
-          if (r > 2.0) glows.push([sx, sy, r, cr, cg, cb, alpha, m]);
+          ctx.fillStyle = `rgba(255,255,255,${alpha * 0.8})`; ctx.beginPath(); ctx.arc(sx, sy, r * 0.45, 0, TAU); ctx.fill();
+          glows.push([sx, sy, r, cr, cg, cb, alpha, m]);
         }
         if (m <= hitMag || s.name[i]) this.hits.push({ x: sx, y: sy, r: Math.max(r, 6), kind: "star", set: s, index: i, prio: m });
         if (S.starLabels && (m <= labelMag || (fov < 30 && s.name[i] && m < 5.5))) {
@@ -358,6 +358,9 @@ export class SkyRenderer {
         }
       }
     }
+    // batched faint stars: one fill per colour/size bucket
+    for (const [key, pts] of Object.entries(dots)) { ctx.fillStyle = `rgba(${key})`; ctx.beginPath(); for (let i = 0; i < pts.length; i += 2) ctx.rect(pts[i] - 0.75, pts[i + 1] - 0.75, 1.5, 1.5); ctx.fill(); }
+    for (const [key, pts] of Object.entries(discs)) { const [col, rs] = key.split("|"), rr = +rs || 1; ctx.fillStyle = `rgba(${col})`; ctx.beginPath(); for (let i = 0; i < pts.length; i += 2) { ctx.moveTo(pts[i] + rr, pts[i + 1]); ctx.arc(pts[i], pts[i + 1], rr, 0, TAU); } ctx.fill(); }
     ctx.globalCompositeOperation = "lighter";
     for (const [sx, sy, r, cr, cg, cb, alpha, m] of glows) {
       const R = r * 3.2;
@@ -397,14 +400,12 @@ export class SkyRenderer {
       if (t === "G" || t === "GPair" || t === "GTrpl" || t === "GGroup") {
         const ry = Math.max(2, r * ratio);
         ctx.save(); ctx.translate(sx, sy); ctx.rotate(ang);
-        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r); g.addColorStop(0, `rgba(255,200,215,${0.22 * vis})`); g.addColorStop(1, "rgba(255,200,215,0)");
-        ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, r, ry, 0, 0, TAU); ctx.fill();
+        if (r > 8) { const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r); g.addColorStop(0, `rgba(255,200,215,${0.22 * vis})`); g.addColorStop(1, "rgba(255,200,215,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, r, ry, 0, 0, TAU); ctx.fill(); }
         ctx.strokeStyle = `rgba(255,175,195,${alpha})`; ctx.beginPath(); ctx.ellipse(0, 0, r, ry, 0, 0, TAU); ctx.stroke(); ctx.restore();
       } else if (t === "OCl" || t === "*Ass" || t === "Ast") {
         ctx.strokeStyle = `rgba(255,232,150,${alpha})`; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
       } else if (t === "GCl") {
-        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r); g.addColorStop(0, `rgba(255,225,170,${0.35 * vis})`); g.addColorStop(1, "rgba(255,225,170,0)");
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
+        if (r > 8) { const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r); g.addColorStop(0, `rgba(255,225,170,${0.35 * vis})`); g.addColorStop(1, "rgba(255,225,170,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill(); }
         ctx.strokeStyle = `rgba(255,222,160,${alpha})`; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.moveTo(sx - r, sy); ctx.lineTo(sx + r, sy); ctx.moveTo(sx, sy - r); ctx.lineTo(sx, sy + r); ctx.stroke();
       } else if (t === "PN") {
         const rr = Math.max(3, r); ctx.strokeStyle = `rgba(150,245,205,${alpha})`; ctx.beginPath(); ctx.arc(sx, sy, rr, 0, TAU);
@@ -412,8 +413,7 @@ export class SkyRenderer {
       } else if (t === "DrkN") {
         ctx.strokeStyle = `rgba(150,150,170,${alpha})`; ctx.setLineDash([4, 3]); ctx.strokeRect(sx - r, sy - r * 0.8, r * 2, r * 1.6); ctx.setLineDash([]);
       } else {
-        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r); g.addColorStop(0, `rgba(170,225,255,${0.25 * vis})`); g.addColorStop(1, "rgba(170,225,255,0)");
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
+        if (r > 8) { const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r); g.addColorStop(0, `rgba(170,225,255,${0.25 * vis})`); g.addColorStop(1, "rgba(170,225,255,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill(); }
         ctx.strokeStyle = `rgba(165,225,255,${alpha})`; roundRect(ctx, sx - r, sy - r * 0.8, r * 2, r * 1.6, Math.min(4, r * 0.4)); ctx.stroke();
       }
       this.hits.push({ x: sx, y: sy, r: Math.max(r, 9), kind: "dso", set: d, index: i, prio: mag - 2 });
@@ -462,9 +462,12 @@ export class SkyRenderer {
       const qAng = Math.atan2(Qs[0] * Y[0] + Qs[1] * Y[1] + Qs[2] * Y[2], Qs[0] * X[0] + Qs[1] * X[1] + Qs[2] * X[2]) * 180 / Math.PI;
       cm = qAng + b.cm - 180; // texture prime meridian sits at u = 0.5
     }
-    const spr = G.sprite({ body: b.name, r, light, pole, cm });
+    // canonical frame: rotate the screen so the pole's in-plane component points up; the sprite is then reused while the view turns
+    const theta = Math.atan2(pole[0], pole[1]);
+    const rot = (v) => [v[0] * Math.cos(theta) - v[1] * Math.sin(theta), v[0] * Math.sin(theta) + v[1] * Math.cos(theta), v[2]];
+    const spr = G.sprite({ body: b.name, r, light: rot(light), pole: rot(pole), cm });
     if (!spr) return false;
-    this.ctx.drawImage(spr, sx - spr.width / 2, sy - spr.height / 2);
+    const ctx = this.ctx; ctx.save(); ctx.translate(sx, sy); ctx.rotate(-theta); ctx.drawImage(spr, -spr.width / 2, -spr.height / 2); ctx.restore();
     return true;
   }
   _bodies(sc) {
@@ -619,11 +622,9 @@ export class SkyRenderer {
         const a = P.projectAltAz(0, az, [0, 0, 0]), b = P.projectAltAz(0, az + 4, [0, 0, 0]);
         const c = P.projectAltAz(-35, az + 4, [0, 0, 0]), d = P.projectAltAz(-35, az, [0, 0, 0]);
         if (!a[2] || !b[2] || !c[2] || !d[2]) continue;
-        const x0 = (a[0] + b[0]) / 2, y0 = (a[1] + b[1]) / 2, x1 = (c[0] + d[0]) / 2, y1 = (c[1] + d[1]) / 2;
-        if (x0 === x1 && y0 === y1) continue;
-        const g = ctx.createLinearGradient(x0, y0, x1, y1);
-        g.addColorStop(0, `rgb(${c0})`); g.addColorStop(1, `rgb(${c1})`);
-        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = `rgb(${c1})`; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath(); ctx.fill();
+        const m1 = P.projectAltAz(-6, az + 4, [0, 0, 0]), m0 = P.projectAltAz(-6, az, [0, 0, 0]);
+        if (m0[2] && m1[2]) { ctx.fillStyle = `rgb(${c0})`; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(m1[0], m1[1]); ctx.lineTo(m0[0], m0[1]); ctx.closePath(); ctx.fill(); }
       }
       ctx.fillStyle = dark ? "#0a100e" : "#1c2624";
       for (let az = 0; az < 360; az += 2) {
@@ -661,9 +662,9 @@ export class SkyRenderer {
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.lineJoin = "round";
     const placed = [];
     this.labels.sort((a, b) => a.prio - b.prio);
-    let count = 0;
+    let count = 0; const budget = this.w < 500 ? 70 : 150;
     for (const l of this.labels) {
-      if (count > 150) break;
+      if (count > budget) break;
       ctx.font = l.font;
       const w = ctx.measureText(l.text).width, h = 12;
       const box = [l.x - 2, l.y - h, l.x + w + 2, l.y + 3];

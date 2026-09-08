@@ -276,7 +276,9 @@ function loop() {
   if (app._lastFrame && performance.now() - lastHud > 250) { lastHud = performance.now(); app.mode?.hud?.(app); app.ui.updateCompass?.(); }
   const live = st.time.live || app.modeName === "ar" || st.selection;
   if (!app.dirty && !live) return;
-  if (!app.dirty && live && performance.now() - (app._lastFrame || 0) < (app.modeName === "ar" ? 0 : 1000)) return;
+  if (!app.dirty && live && performance.now() - (app._lastFrame || 0) < (app.modeName === "ar" ? 28 : 1000)) return;
+  if (app.modeName === "ar" && performance.now() - (app._lastFrame || 0) < 28) return;
+  app.renderer.maxDpr = app.modeName === "ar" ? 1.5 : 2;
   app._lastFrame = performance.now(); app.dirty = false;
   const P = app.projector;
   if (app.follow && st.selection && app.modeName === "planetarium" && !app._anim) { const aa = app.altAzOf(st.selection); if (aa) { st.view.az = aa.az; st.view.alt = aa.alt; } }

@@ -48,7 +48,7 @@ export class GlobeRenderer {
     const night = NIGHT[p.body] ? this._texture(NIGHT[p.body]) : null; if (NIGHT[p.body] && !night) return null;
     const ring = p.body === "Saturn" ? this._texture(RING) : null; if (p.body === "Saturn" && !ring) return null;
     const r = Math.round(p.r);
-    const key = `${p.body}|${r}|${p.light.map(v => v.toFixed(2))}|${p.pole.map(v => v.toFixed(2))}|${p.cm.toFixed(0)}`;
+    const key = `${p.body}|${r}|${p.light.map(v => (Math.round(v * 40) / 40).toFixed(3))}|${p.pole.map(v => (Math.round(v * 40) / 40).toFixed(3))}|${Math.round(p.cm / 2) * 2}`;
     const hit = this.cache.get(key); if (hit) return hit;
     const ringScale = p.body === "Saturn" ? 2.35 : 1, pad = Math.ceil(r * ringScale) + 3, S = 2 * pad;
     const c = document.createElement("canvas"); c.width = S; c.height = S;
@@ -87,7 +87,7 @@ export class GlobeRenderer {
     if (ring) this._drawRing(ctx, pad, r, P, L, ring, ringScale);
     if (ATMO[p.body] && !lit) { ctx.globalCompositeOperation = "lighter"; const g = ctx.createRadialGradient(pad, pad, r * 0.9, pad, pad, r * 1.12); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(0.6, ATMO[p.body]); g.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pad, pad, r * 1.12, 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = "source-over"; }
     if (lit) { ctx.globalCompositeOperation = "lighter"; const g = ctx.createRadialGradient(pad, pad, r * 0.95, pad, pad, r * 1.3); g.addColorStop(0, "rgba(255,210,120,0.9)"); g.addColorStop(1, "rgba(255,160,60,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pad, pad, r * 1.3, 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = "source-over"; }
-    if (this.cache.size > 12) this.cache.delete(this.cache.keys().next().value);
+    if (this.cache.size > 24) this.cache.delete(this.cache.keys().next().value);
     this.cache.set(key, c);
     return c;
   }
